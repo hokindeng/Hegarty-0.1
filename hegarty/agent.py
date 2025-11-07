@@ -3,12 +3,10 @@ HergartyAgent: Core orchestration agent for perspective-taking pipeline
 """
 
 import logging
-import asyncio
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 import io
-import json
 
 from openai import OpenAI
 import numpy as np

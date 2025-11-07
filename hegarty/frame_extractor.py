@@ -264,29 +264,4 @@ class FrameExtractor:
         resized = pil_image.resize(target_size, Image.Resampling.LANCZOS)
         
         return np.array(resized)
-    
-    def extract_single_frame(
-        self,
-        video_data: Dict[str, Any],
-        position: float = 0.5
-    ) -> Optional[np.ndarray]:
-        """
-        Extract a single frame at a specific position.
-        
-        Args:
-            video_data: Video data dictionary
-            position: Position in video (0.0 to 1.0)
-        
-        Returns:
-            Single frame or None
-        """
-        frames = video_data.get('frames', [])
-        
-        if not frames:
-            return None
-        
-        # Calculate frame index
-        idx = int(position * (len(frames) - 1))
-        idx = max(0, min(idx, len(frames) - 1))
-        
-        return frames[idx]
+

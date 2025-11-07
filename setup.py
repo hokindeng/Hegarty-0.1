@@ -34,30 +34,13 @@ setup(
         "openai>=1.6.0",
         "numpy>=1.24.0",
         "pillow>=10.0.0",
-        "pyyaml>=6.0",
-        "python-dotenv>=1.0.0",
     ],
     extras_require={
         "dev": [
             "pytest>=7.0.0",
-            "pytest-asyncio>=0.21.0",
             "black>=23.0.0",
             "flake8>=6.0.0",
-            "mypy>=1.0.0",
-        ],
-        "visualization": [
-            "matplotlib>=3.6.0",
-            "opencv-python>=4.8.0",
         ]
-    },
-    entry_points={
-        "console_scripts": [
-            "hegarty-demo=examples.demo:main",
-        ],
-    },
-    include_package_data=True,
-    package_data={
-        "hegarty": ["config.yaml"],
     },
     zip_safe=False,
 )

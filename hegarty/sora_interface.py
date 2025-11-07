@@ -9,7 +9,6 @@ from typing import Optional, Dict, Any
 import numpy as np
 from PIL import Image
 import io
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -231,20 +230,4 @@ class SoraInterface:
         ys = [c[1] for c in corners]
         
         return (min(xs) <= x <= max(xs)) and (min(ys) <= y <= max(ys))
-    
-    def get_video_status(self, video_id: str) -> Dict[str, Any]:
-        """
-        Get status of video generation job.
-        
-        Args:
-            video_id: Video generation job ID
-        
-        Returns:
-            Status dictionary
-        """
-        # Placeholder for async video generation
-        return {
-            'status': 'completed',
-            'video_id': video_id,
-            'progress': 100
-        }
+

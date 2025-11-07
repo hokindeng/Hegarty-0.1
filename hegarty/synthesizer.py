@@ -282,31 +282,4 @@ Final Synthesized Answer:"""
         best = max(perspectives, key=lambda p: len(p.get('analysis', '')))
         
         return best
-    
-    def batch_synthesize(
-        self,
-        batch_perspectives: List[List[Dict[str, Any]]],
-        questions: List[str],
-        contexts: Optional[List[List[Dict]]] = None
-    ) -> List[Tuple[str, float]]:
-        """
-        Synthesize multiple sets of perspectives in batch.
-        
-        Args:
-            batch_perspectives: List of perspective sets
-            questions: List of original questions
-            contexts: Optional list of contexts
-        
-        Returns:
-            List of (answer, confidence) tuples
-        """
-        results = []
-        
-        for i, perspectives in enumerate(batch_perspectives):
-            question = questions[i] if i < len(questions) else ""
-            context = contexts[i] if contexts and i < len(contexts) else None
-            
-            answer, confidence = self.synthesize(perspectives, question, context)
-            results.append((answer, confidence))
-        
-        return results
+

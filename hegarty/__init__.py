@@ -7,12 +7,12 @@ __author__ = "Hegarty Research Team"
 
 from .client import HergartyClient
 from .agent import HergartyAgent
-from .detector import PerspectiveDetector
+from .gpt_detector import GPT4OPerspectiveDetector
 from .config import Config
 
 __all__ = [
     "HergartyClient",
     "HergartyAgent", 
-    "PerspectiveDetector",
+    "GPT4OPerspectiveDetector",
     "Config"
 ]
