@@ -4,7 +4,7 @@ PerspectiveDetector: Detects if a question requires perspective-taking or mental
 
 import re
 import logging
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
