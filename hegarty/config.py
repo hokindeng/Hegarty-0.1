@@ -17,9 +17,9 @@ class Config:
     max_tokens: int = 2000
     
     # Sora-2 settings
-    sora_video_length: int = 3  # seconds
+    sora_video_length: int = 4  # seconds - cost-efficient at $0.40 per video
     sora_fps: int = 10
-    sora_resolution: str = "1024x1024"
+    sora_resolution: str = "1280x720"  # Sora-2 supported resolution
     
     # Frame extraction settings
     frame_extraction_count: int = 5

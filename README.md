@@ -27,9 +27,38 @@ Output: Comprehensive Answer
 
 ## Installation
 
+### 1. Create and activate virtual environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate  # Always activate the virtual environment first
+```
+
+### 2. Install the package
+
 ```bash
 pip install -e .
 ```
+
+### 3. Set up environment variables
+
+Create a `.env` file in the project root using the template:
+
+```bash
+# Copy the template and add your keys
+cp env_template.txt .env
+# Edit .env with your actual API keys
+```
+
+Or create `.env` manually:
+
+```bash
+# .env
+OPENAI_API_KEY=your-openai-api-key-here
+SORA_API_KEY=your-sora-api-key-here  # Optional
+```
+
+**Note:** `.env` files are automatically ignored by git to keep your API keys secure.
 
 **Requirements:**
 - Python 3.9+
@@ -41,11 +70,8 @@ pip install -e .
 ```python
 from hegarty import HergartyClient
 
-# Initialize the client
-client = HergartyClient(
-    openai_api_key="your-openai-key",
-    sora_api_key="your-sora-key"  # Optional
-)
+# Initialize the client (automatically loads from .env file)
+client = HergartyClient()
 
 # Use exactly like OpenAI client
 response = client.chat.completions.create(
@@ -69,6 +95,32 @@ response = client.chat.completions.create(
 
 print(response.choices[0].message.content)
 ```
+
+## Web Interface (Gradio)
+
+Launch the interactive web interface:
+
+```bash
+# Always activate virtual environment first
+source venv/bin/activate
+
+# Run the Gradio web app
+python gradio.py
+```
+
+The web interface will be available at `http://localhost:7860` and provides:
+
+- **Image upload** with drag-and-drop support
+- **Real-time perspective detection** analysis
+- **Interactive configuration** (temperature, mental rotation toggle)
+- **Visual processing feedback** with intermediate steps
+- **Example questions** for quick testing
+
+**Features:**
+- Automatically detects if questions require perspective-taking
+- Shows confidence scores and reasoning for detection
+- Supports both Sora-2 mental rotation and fallback modes
+- Provides detailed processing information and timing
 
 ## Perspective Detection
 
@@ -108,10 +160,12 @@ client = HergartyClient(config=config)
 ```python
 from hegarty import HergartyAgent
 from openai import OpenAI
+import os
 
+# API keys loaded from .env automatically
 agent = HergartyAgent(
-    openai_client=OpenAI(api_key="your-key"),
-    sora_api_key="your-sora-key"
+    openai_client=OpenAI(),  # Uses OPENAI_API_KEY from environment
+    sora_api_key=os.getenv("SORA_API_KEY")
 )
 
 result = agent.process(

@@ -1,0 +1,10 @@
+# Hegarty Environment Configuration Template
+# Copy this content to a new file named '.env' in the project root
+# and replace the placeholder values with your actual API keys
+
+# Required: OpenAI API key for GPT-4o access
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Optional: Sora API key for mental rotation videos
+# If not provided, will use simulation mode
+SORA_API_KEY=your-sora-api-key-here

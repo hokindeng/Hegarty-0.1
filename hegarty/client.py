@@ -7,6 +7,12 @@ import logging
 from typing import Optional, List, Dict, Any
 import time
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load environment variables from .env file
+except ImportError:
+    pass  # python-dotenv not installed, skip
+
 from openai import OpenAI
 
 from .agent import HergartyAgent
