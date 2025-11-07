@@ -11,33 +11,17 @@ def test_imports():
     """Test that all modules can be imported."""
     print("Testing imports...")
     
-    try:
-        from hegarty import HergartyClient
-        print("  ✓ HergartyClient")
-    except ImportError as e:
-        print(f"  ✗ HergartyClient: {e}")
-        return False
+    from hegarty import HergartyClient
+    print("  ✓ HergartyClient")
     
-    try:
-        from hegarty import HergartyAgent
-        print("  ✓ HergartyAgent")
-    except ImportError as e:
-        print(f"  ✗ HergartyAgent: {e}")
-        return False
+    from hegarty import HergartyAgent
+    print("  ✓ HergartyAgent")
     
-    try:
-        from hegarty import Config
-        print("  ✓ Config")
-    except ImportError as e:
-        print(f"  ✗ Config: {e}")
-        return False
+    from hegarty import Config
+    print("  ✓ Config")
     
-    try:
-        from hegarty import GPT4OPerspectiveDetector
-        print("  ✓ GPT4OPerspectiveDetector")
-    except ImportError as e:
-        print(f"  ✗ GPT4OPerspectiveDetector: {e}")
-        return False
+    from hegarty import GPT4OPerspectiveDetector
+    print("  ✓ GPT4OPerspectiveDetector")
     
     return True
 
@@ -47,26 +31,22 @@ def test_perspective_detection():
     print("\nTesting GPT-4o perspective detection...")
     
     # Basic import test
-    try:
-        from hegarty import GPT4OPerspectiveDetector
-        from hegarty.gpt_detector import GPTDetectionResult
-        print("  ✓ GPT4OPerspectiveDetector can be imported")
-        print("  ✓ GPTDetectionResult dataclass available")
-        
-        # Test that the class has expected methods
-        expected_methods = ['analyze', 'detailed_analysis', '_fallback_detection']
-        for method in expected_methods:
-            if hasattr(GPT4OPerspectiveDetector, method):
-                print(f"  ✓ Method '{method}' exists")
-            else:
-                print(f"  ✗ Method '{method}' missing")
-                return False
-        
-        print("  ℹ Skipping API-dependent tests (requires network access)")
-        return True
-    except Exception as e:
-        print(f"  ✗ Error testing perspective detection: {e}")
-        return False
+    from hegarty import GPT4OPerspectiveDetector
+    from hegarty.gpt_detector import GPTDetectionResult
+    print("  ✓ GPT4OPerspectiveDetector can be imported")
+    print("  ✓ GPTDetectionResult dataclass available")
+    
+    # Test that the class has expected methods
+    expected_methods = ['analyze', 'detailed_analysis', '_fallback_detection']
+    for method in expected_methods:
+        if hasattr(GPT4OPerspectiveDetector, method):
+            print(f"  ✓ Method '{method}' exists")
+        else:
+            print(f"  ✗ Method '{method}' missing")
+            return False
+    
+    print("  ℹ Skipping API-dependent tests (requires network access)")
+    return True
 
 
 def test_config():
@@ -97,20 +77,16 @@ def test_client_initialization():
     from hegarty import HergartyClient
     
     # Check if we can import the class
-    try:
-        print("  ✓ HergartyClient class can be imported")
-        
-        # Only test initialization if we have a real API key
-        if os.getenv("OPENAI_API_KEY") and not os.getenv("OPENAI_API_KEY").startswith("dummy"):
-            client = HergartyClient()
-            print("  ✓ Client initialized successfully with real API key")
-        else:
-            print("  ℹ Skipping client initialization (requires real OpenAI API key)")
-        
-        return True
-    except Exception as e:
-        print(f"  ✗ Error: {e}")
-        return False
+    print("  ✓ HergartyClient class can be imported")
+    
+    # Only test initialization if we have a real API key
+    if os.getenv("OPENAI_API_KEY") and not os.getenv("OPENAI_API_KEY").startswith("dummy"):
+        client = HergartyClient()
+        print("  ✓ Client initialized successfully with real API key")
+    else:
+        print("  ℹ Skipping client initialization (requires real OpenAI API key)")
+    
+    return True
 
 
 def main():
@@ -128,12 +104,8 @@ def main():
     
     results = []
     for name, test_func in tests:
-        try:
-            passed = test_func()
-            results.append((name, passed))
-        except Exception as e:
-            print(f"\n✗ {name} test failed with error: {e}")
-            results.append((name, False))
+        passed = test_func()
+        results.append((name, passed))
     
     # Summary
     print("\n" + "=" * 60)

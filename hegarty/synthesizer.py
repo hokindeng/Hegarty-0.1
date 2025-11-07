@@ -69,42 +69,35 @@ class PerspectiveSynthesizer:
         )
         
         # Call GPT-4o for final synthesis
-        try:
-            messages = context or []
-            messages.append({
-                "role": "system",
-                "content": "You are an expert at spatial reasoning and perspective analysis. Synthesize multiple viewpoint analyses into a comprehensive answer."
-            })
-            messages.append({
-                "role": "user",
-                "content": synthesis_prompt
-            })
-            
-            response = self.openai_client.chat.completions.create(
-                model=self.config.gpt_model if self.config else "gpt-4o",
-                messages=messages,
-                temperature=0.2,  # Lower temperature for synthesis
-                max_tokens=self.config.max_tokens if self.config else 2000
-            )
-            
-            final_answer = response.choices[0].message.content
-            
-            # Calculate final confidence
-            confidence = self._calculate_final_confidence(
-                consistency_score,
-                perspectives,
-                final_answer
-            )
-            
-            logger.info(f"Synthesis complete. Confidence: {confidence:.2f}")
-            
-            return final_answer, confidence
-            
-        except Exception as e:
-            logger.error(f"Error in synthesis: {str(e)}")
-            # Fallback to best single perspective
-            best_perspective = self._select_best_perspective(perspectives)
-            return best_perspective.get('analysis', 'Unable to synthesize perspectives.'), 0.3
+        messages = context or []
+        messages.append({
+            "role": "system",
+            "content": "You are an expert at spatial reasoning and perspective analysis. Synthesize multiple viewpoint analyses into a comprehensive answer."
+        })
+        messages.append({
+            "role": "user",
+            "content": synthesis_prompt
+        })
+        
+        response = self.openai_client.chat.completions.create(
+            model=self.config.gpt_model if self.config else "gpt-4o",
+            messages=messages,
+            temperature=0.2,  # Lower temperature for synthesis
+            max_tokens=self.config.max_tokens if self.config else 2000
+        )
+        
+        final_answer = response.choices[0].message.content
+        
+        # Calculate final confidence
+        confidence = self._calculate_final_confidence(
+            consistency_score,
+            perspectives,
+            final_answer
+        )
+        
+        logger.info(f"Synthesis complete. Confidence: {confidence:.2f}")
+        
+        return final_answer, confidence
     
     def _format_perspectives(
         self,

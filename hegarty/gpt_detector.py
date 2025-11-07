@@ -95,48 +95,37 @@ Be accurate - not all spatial questions require perspective-taking. For example,
         if not text:
             return GPTDetectionResult(False, 0.0, "No text provided", [])
         
-        try:
-            # Call GPT-4o for analysis
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Analyze this text:\n\n{text}"}
-                ],
-                temperature=self.temperature,
-                response_format={"type": "json_object"},  # Ensure JSON response
-                max_tokens=200  # Limited tokens needed for detection
-            )
-            
-            # Parse response
-            content = response.choices[0].message.content
-            result_data = json.loads(content)
-            
-            # Extract fields with defaults
-            is_perspective = bool(result_data.get("is_perspective_task", False))
-            confidence = float(result_data.get("confidence", 0.5))
-            confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
-            reasoning = result_data.get("reasoning", "No reasoning provided")
-            aspects = result_data.get("detected_aspects", [])
-            
-            logger.debug(f"GPT-4o detection: {is_perspective} (conf: {confidence:.2f}) - {reasoning}")
-            
-            return GPTDetectionResult(
-                is_perspective_task=is_perspective,
-                confidence=confidence,
-                reasoning=reasoning,
-                detected_aspects=aspects
-            )
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse GPT-4o response: {e}")
-            # Fallback to simple detection
-            return self._fallback_detection(text)
-            
-        except Exception as e:
-            logger.error(f"GPT-4o detection error: {e}")
-            # Fallback to simple detection
-            return self._fallback_detection(text)
+        # Call GPT-4o for analysis
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "user", "content": f"Analyze this text:\n\n{text}"}
+            ],
+            temperature=self.temperature,
+            response_format={"type": "json_object"},  # Ensure JSON response
+            max_tokens=200  # Limited tokens needed for detection
+        )
+        
+        # Parse response
+        content = response.choices[0].message.content
+        result_data = json.loads(content)
+        
+        # Extract fields with defaults
+        is_perspective = bool(result_data.get("is_perspective_task", False))
+        confidence = float(result_data.get("confidence", 0.5))
+        confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
+        reasoning = result_data.get("reasoning", "No reasoning provided")
+        aspects = result_data.get("detected_aspects", [])
+        
+        logger.debug(f"GPT-4o detection: {is_perspective} (conf: {confidence:.2f}) - {reasoning}")
+        
+        return GPTDetectionResult(
+            is_perspective_task=is_perspective,
+            confidence=confidence,
+            reasoning=reasoning,
+            detected_aspects=aspects
+        )
     
     def _fallback_detection(self, text: str) -> GPTDetectionResult:
         """
