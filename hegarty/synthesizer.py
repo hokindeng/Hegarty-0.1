@@ -5,6 +5,9 @@ PerspectiveSynthesizer: Synthesize multiple perspective analyses into a final an
 import logging
 from typing import List, Dict, Any, Tuple, Optional
 import re
+import json
+from datetime import datetime
+from pathlib import Path
 
 from openai import OpenAI
 
@@ -29,8 +32,77 @@ class PerspectiveSynthesizer:
         """
         self.openai_client = openai_client
         self.config = config
+        self.session_dir = None
+        self.gpt_call_counter = 0
         
         logger.info("PerspectiveSynthesizer initialized")
+    
+    def _save_gpt_call(self, call_name: str, messages: List[Dict], response: Any, model: str):
+        """
+        Save GPT-4o API call details to file for debugging.
+        """
+        if not self.session_dir:
+            return
+        
+        self.gpt_call_counter += 1
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"gpt_call_{self.gpt_call_counter:03d}_{call_name}_{timestamp}.json"
+        filepath = self.session_dir / filename
+        
+        # Prepare data to save
+        data = {
+            "call_number": self.gpt_call_counter,
+            "call_name": call_name,
+            "timestamp": timestamp,
+            "model": model,
+            "request": {
+                "messages": self._sanitize_messages_for_json(messages)
+            },
+            "response": {
+                "content": response.choices[0].message.content if hasattr(response, 'choices') else str(response),
+                "model": response.model if hasattr(response, 'model') else model,
+                "usage": response.usage.dict() if hasattr(response, 'usage') and response.usage else None
+            }
+        }
+        
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            logger.info(f"Saved GPT call to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save GPT call: {e}")
+    
+    def _sanitize_messages_for_json(self, messages: List[Dict]) -> List[Dict]:
+        """
+        Sanitize messages for JSON serialization (truncate base64 images).
+        """
+        sanitized = []
+        for msg in messages:
+            sanitized_msg = {"role": msg["role"]}
+            
+            if isinstance(msg["content"], str):
+                sanitized_msg["content"] = msg["content"]
+            elif isinstance(msg["content"], list):
+                sanitized_content = []
+                for item in msg["content"]:
+                    if item["type"] == "text":
+                        sanitized_content.append(item)
+                    elif item["type"] == "image_url":
+                        # Truncate base64 image data for readability
+                        image_url = item["image_url"]["url"]
+                        if "base64" in image_url and len(image_url) > 100:
+                            truncated = image_url[:100] + f"... [base64 image truncated, total length: {len(image_url)}]"
+                            sanitized_content.append({
+                                "type": "image_url",
+                                "image_url": {"url": truncated}
+                            })
+                        else:
+                            sanitized_content.append(item)
+                sanitized_msg["content"] = sanitized_content
+            
+            sanitized.append(sanitized_msg)
+        
+        return sanitized
     
     def synthesize(
         self,
@@ -79,12 +151,17 @@ class PerspectiveSynthesizer:
             "content": synthesis_prompt
         })
         
+        model = self.config.gpt_model if self.config else "gpt-4o"
+        
         response = self.openai_client.chat.completions.create(
-            model=self.config.gpt_model if self.config else "gpt-4o",
+            model=model,
             messages=messages,
             temperature=0.2,  # Lower temperature for synthesis
             max_tokens=self.config.max_tokens if self.config else 2000
         )
+        
+        # Save the GPT call for debugging
+        self._save_gpt_call("synthesize", messages, response, model)
         
         final_answer = response.choices[0].message.content
         
