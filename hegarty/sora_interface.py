@@ -85,7 +85,8 @@ class SoraInterface:
         image: str,
         duration: int = 4,
         fps: int = 10,
-        resolution: str = "1280x720"
+        resolution: str = "1280x720",
+        session_dir: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
         Generate a video showing mental rotation or perspective change.
@@ -96,6 +97,7 @@ class SoraInterface:
             duration: Video duration in seconds (4, 8, or 12)
             fps: Frames per second (ignored, Sora uses its own FPS)
             resolution: Output resolution
+            session_dir: Optional Path to session directory for organizing files
         
         Returns:
             Dictionary containing video data and metadata
@@ -103,7 +105,7 @@ class SoraInterface:
         logger.info(f"Generating video: {prompt[:50]}...")
         
         # Convert base64 image to temp file
-        temp_image_path = self._base64_to_temp_file(image)
+        temp_image_path = self._base64_to_temp_file(image, session_dir)
         
         try:
             # Run async generation
@@ -111,7 +113,8 @@ class SoraInterface:
                 prompt=prompt,
                 image_path=temp_image_path,
                 duration=str(duration),
-                size=resolution
+                size=resolution,
+                session_dir=session_dir
             ))
             
             return result
@@ -121,7 +124,7 @@ class SoraInterface:
             if temp_image_path and Path(temp_image_path).exists():
                 Path(temp_image_path).unlink()
 
-    def _base64_to_temp_file(self, image_data: str) -> str:
+    def _base64_to_temp_file(self, image_data: str, session_dir: Optional[Path] = None) -> str:
         """Convert base64 image to temporary file."""
         # Remove data URL prefix if present
         if image_data.startswith('data:'):
@@ -130,9 +133,12 @@ class SoraInterface:
         # Decode base64
         image_bytes = base64.b64decode(image_data)
         
-        # Create temp file in project temp directory
-        temp_dir = Path.cwd() / "temp"
-        temp_dir.mkdir(exist_ok=True)
+        # Use session directory if provided, otherwise use default temp
+        if session_dir:
+            temp_dir = Path(session_dir)
+        else:
+            temp_dir = Path.cwd() / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
         temp_path = temp_dir / f"sora_input_{int(time.time())}.png"
         
         # Save image
@@ -146,7 +152,8 @@ class SoraInterface:
         prompt: str,
         image_path: str,
         duration: str = "4",
-        size: str = "1280x720"
+        size: str = "1280x720",
+        session_dir: Optional[Path] = None
     ) -> Dict[str, Any]:
         """Async video generation using real Sora API."""
         
@@ -181,7 +188,7 @@ class SoraInterface:
             raise Exception(f"Video generation failed: {job_result}")
         
         # Download the actual video file
-        video_path = await self._download_video(job_result, video_id)
+        video_path = await self._download_video(job_result, video_id, session_dir)
         
         # Create result in expected format
         return {
@@ -337,7 +344,7 @@ class SoraInterface:
 
         raise TimeoutError(f"Video generation timed out after {max_wait_time} seconds")
 
-    async def _download_video(self, job_result: Dict[str, Any], video_id: str) -> str:
+    async def _download_video(self, job_result: Dict[str, Any], video_id: str, session_dir: Optional[Path] = None) -> str:
         """Download the generated video file using direct content endpoint."""
         # Use direct content endpoint - no need to search for URLs in job result
         content_url = f"{self.base_url}/videos/{video_id}/content"
@@ -345,9 +352,12 @@ class SoraInterface:
         
         logger.info(f"Downloading video from content endpoint: {content_url}")
         
-        # Create temp directory path
-        temp_dir = Path.cwd() / "temp"
-        temp_dir.mkdir(exist_ok=True)
+        # Use session directory if provided, otherwise use default temp
+        if session_dir:
+            temp_dir = Path(session_dir)
+        else:
+            temp_dir = Path.cwd() / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
         
         # Download video
         video_filename = f"sora_video_{video_id}_{int(time.time())}.mp4"

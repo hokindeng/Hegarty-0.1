@@ -38,7 +38,8 @@ class FrameExtractor:
         self,
         video_data: Dict[str, Any],
         num_frames: int = 5,
-        window_size: int = 30
+        window_size: int = 30,
+        session_dir: Optional[Path] = None
     ) -> List[np.ndarray]:
         """
         Extract key frames from video data.
@@ -47,6 +48,7 @@ class FrameExtractor:
             video_data: Video data dictionary from Sora (contains video_path)
             num_frames: Number of frames to extract
             window_size: Size of window to consider (last N frames)
+            session_dir: Optional Path to session directory for organizing files
         
         Returns:
             List of extracted frames as numpy arrays
@@ -54,7 +56,7 @@ class FrameExtractor:
         # Check for video path first (new method)
         video_path = video_data.get('video_path')
         if video_path:
-            return self._extract_frames_from_video(video_path, num_frames, window_size)
+            return self._extract_frames_from_video(video_path, num_frames, window_size, session_dir)
         
         # Fallback to old method for backwards compatibility
         frames = video_data.get('frames', [])
@@ -281,7 +283,8 @@ class FrameExtractor:
         self,
         video_path: str,
         num_frames: int = 5,
-        window_size: int = 30
+        window_size: int = 30,
+        session_dir: Optional[Path] = None
     ) -> List[np.ndarray]:
         """
         Extract frames directly from video file using OpenCV.
@@ -290,6 +293,7 @@ class FrameExtractor:
             video_path: Path to video file
             num_frames: Number of frames to extract
             window_size: Size of window to consider (last N frames)
+            session_dir: Optional Path to session directory for organizing files
         
         Returns:
             List of extracted frames as numpy arrays
@@ -359,7 +363,7 @@ class FrameExtractor:
                 extracted = self._uniform_extraction(all_frames, num_frames)
             
             # Save extracted frames to temp directory for debugging
-            self._save_frames_to_temp(extracted, video_path)
+            self._save_frames_to_temp(extracted, video_path, session_dir)
             
             logger.info(f"Successfully extracted {len(extracted)} frames using {self.strategy} strategy")
             
@@ -369,17 +373,21 @@ class FrameExtractor:
             logger.error(f"Error extracting frames from video {video_path}: {e}")
             return []
     
-    def _save_frames_to_temp(self, frames: List[np.ndarray], video_path: str) -> None:
+    def _save_frames_to_temp(self, frames: List[np.ndarray], video_path: str, session_dir: Optional[Path] = None) -> None:
         """
         Save extracted frames to temp directory for debugging and intermediate storage.
         
         Args:
             frames: List of extracted frames
             video_path: Original video path (used for naming)
+            session_dir: Optional Path to session directory for organizing files
         """
         try:
-            # Create temp directory for frames
-            temp_dir = Path.cwd() / "temp" / "frames"
+            # Use session directory if provided, otherwise use default temp/frames
+            if session_dir:
+                temp_dir = Path(session_dir) / "frames"
+            else:
+                temp_dir = Path.cwd() / "temp" / "frames"
             temp_dir.mkdir(parents=True, exist_ok=True)
             
             # Get video filename for naming

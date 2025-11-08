@@ -211,3 +211,6 @@ temp/
 tmp/
 *.tmp
 .gradio/
+
+# Hegarty app directories
+hegarty_files/

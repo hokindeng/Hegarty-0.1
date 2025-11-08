@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 import io
+from pathlib import Path
 
 from openai import OpenAI
 import numpy as np
@@ -68,7 +69,8 @@ class HergartyAgent:
         max_tokens: Optional[int] = None,
         use_mental_rotation: bool = True,
         num_perspectives: int = 6,
-        return_intermediate: bool = False
+        return_intermediate: bool = False,
+        session_dir: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
         Process a perspective-taking query through the full pipeline.
@@ -82,6 +84,7 @@ class HergartyAgent:
             use_mental_rotation: Whether to use Sora-2 mental rotation
             num_perspectives: Number of parallel perspective analyses
             return_intermediate: Whether to return intermediate results
+            session_dir: Optional Path to session directory for organizing files
         
         Returns:
             Dictionary with final answer and optionally intermediate results
@@ -106,7 +109,8 @@ class HergartyAgent:
                 prompt=rephrased_prompt,
                 image=image,
                 duration=self.config.sora_video_length,
-                fps=self.config.sora_fps
+                fps=self.config.sora_fps,
+                session_dir=session_dir
             )
             logger.info("Video generation complete")
             
@@ -114,7 +118,8 @@ class HergartyAgent:
             frames = self.frame_extractor.extract_frames(
                 video_data,
                 num_frames=self.config.frame_extraction_count,
-                window_size=self.config.frame_extraction_window
+                window_size=self.config.frame_extraction_window,
+                session_dir=session_dir
             )
             logger.info(f"Extracted {len(frames)} frames")
             

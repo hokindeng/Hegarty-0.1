@@ -32,10 +32,11 @@ logger = logging.getLogger(__name__)
 # Global client
 hegarty_client: Optional[HergartyClient] = None
 
-# Create temp directory for debugging
-TEMP_DIR = Path(tempfile.gettempdir()) / "hegarty_debug"
-TEMP_DIR.mkdir(exist_ok=True)
-logger.info(f"Debug files will be saved to: {TEMP_DIR}")
+# Create temp directory structure for all session files
+TEMP_DIR = Path.cwd() / "temp"
+SESSIONS_DIR = TEMP_DIR / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+logger.info(f"All session files will be saved to: {SESSIONS_DIR}")
 
 
 def encode_image_to_base64(image: Image.Image) -> str:
@@ -112,8 +113,9 @@ def extract_frames_from_video(video_path: Path, output_dir: Path, num_frames: in
 def create_session_folder() -> Path:
     """Create a timestamped folder for this session."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_dir = TEMP_DIR / f"session_{timestamp}"
+    session_dir = SESSIONS_DIR / f"session_{timestamp}"
     session_dir.mkdir(exist_ok=True)
+    
     return session_dir
 
 
@@ -182,10 +184,12 @@ def process_image_question(image: Optional[Image.Image], question: str) -> Tuple
         debug_info.append(f"Perspective detection: {is_perspective} (confidence: {confidence:.2f})")
         
         # Call Hegarty agent directly to get intermediate results
+        # Pass session directory for organizing files
         result = hegarty_client.agent.process(
             image=image_base64,
             question=question,
-            return_intermediate=True
+            return_intermediate=True,
+            session_dir=session_dir
         )
         
         answer = result['final_answer']
@@ -239,28 +243,35 @@ def process_image_question(image: Optional[Image.Image], question: str) -> Tuple
                 if video_url:
                     debug_info.append(f"Found video URL: {video_url}")
                     
-                    # Download video
+                    # Download video to session directory
                     video_file_path = session_dir / "sora_video.mp4"
                     sora_key = os.getenv("SORA_API_KEY")
                     
                     if asyncio.run(download_sora_video(video_url, video_file_path, sora_key)):
                         # Only set video_path if file actually exists and has content
                         if video_file_path.exists() and video_file_path.stat().st_size > 0:
-                            video_path = str(video_file_path)
+                            video_path = str(video_file_path)  # Direct path for Gradio
                             debug_info.append(f"Video downloaded: {video_path}")
                             
                             # Extract frames
                             frames_dir = session_dir / "frames"
+                            frames_dir.mkdir(exist_ok=True)
+                            
                             extracted_frames = extract_frames_from_video(
                                 video_file_path, 
                                 frames_dir,
                                 num_frames=5
                             )
                             
-                            # Only include frames that actually exist
-                            valid_frames = [str(f) for f in extracted_frames if f.exists() and f.stat().st_size > 0]
+                            # Use direct frame paths for Gradio
+                            valid_frames = []
+                            for frame_path in extracted_frames:
+                                if frame_path.exists() and frame_path.stat().st_size > 0:
+                                    valid_frames.append(str(frame_path))
+                            
                             frame_paths = valid_frames
-                            debug_info.append(f"Extracted {len(frame_paths)} valid frames: {frame_paths}")
+                            debug_info.append(f"Extracted {len(frame_paths)} valid frames")
+                            debug_info.append(f"Frame paths: {frame_paths}")
                         else:
                             debug_info.append("Video file not created or empty")
                     else:
@@ -368,12 +379,15 @@ def create_interface():
 def main():
     """Launch the simple interface."""
     print("🧠 Starting Hegarty AI...")
+    print(f"📁 All session files will be saved to: {SESSIONS_DIR}")
     
     interface = create_interface()
     interface.launch(
         server_name="0.0.0.0",
         server_port=7860,
-        share=True
+        share=True,
+        # Allow Gradio to serve files from temp directory
+        allowed_paths=[str(TEMP_DIR)]
     )
 
 
