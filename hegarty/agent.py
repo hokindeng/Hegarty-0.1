@@ -3,12 +3,10 @@ HergartyAgent: Core orchestration agent for perspective-taking pipeline
 """
 
 import logging
-import asyncio
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 import io
-import json
 
 from openai import OpenAI
 import numpy as np
@@ -95,76 +93,62 @@ class HergartyAgent:
             'confidence': 0.0
         }
         
-        try:
-            # Step 1: Rephrase question for Sora-2
-            rephrased_prompt = self._rephrase_for_sora(question, image)
-            logger.info(f"Rephrased for Sora: {rephrased_prompt}")
-            
-            if return_intermediate:
-                result['rephrased_prompt'] = rephrased_prompt
-            
-            # Step 2: Generate mental rotation video with Sora-2
-            if use_mental_rotation:
-                video_data = self.sora.generate_video(
-                    prompt=rephrased_prompt,
-                    image=image,
-                    duration=self.config.sora_video_length,
-                    fps=self.config.sora_fps
-                )
-                logger.info("Video generation complete")
-                
-                # Step 3: Extract frames
-                frames = self.frame_extractor.extract_frames(
-                    video_data,
-                    num_frames=self.config.frame_extraction_count,
-                    window_size=self.config.frame_extraction_window
-                )
-                logger.info(f"Extracted {len(frames)} frames")
-                
-                if return_intermediate:
-                    result['frames'] = [self._encode_frame(f) for f in frames]
-            else:
-                # Use only original image if mental rotation disabled
-                frames = []
-            
-            # Step 4: Parallel perspective analysis
-            perspectives = self._analyze_perspectives(
-                original_image=image,
-                frames=frames,
-                question=question,
-                context=context_messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            logger.info(f"Analyzed {len(perspectives)} perspectives")
-            
-            if return_intermediate:
-                result['perspectives'] = perspectives
-            
-            # Step 5: Synthesize final answer
-            final_answer, confidence = self.synthesizer.synthesize(
-                perspectives=perspectives,
-                original_question=question,
-                context=context_messages
-            )
-            
-            result['final_answer'] = final_answer
-            result['confidence'] = confidence
-            
-            logger.info(f"Pipeline complete. Confidence: {confidence:.2f}")
-            
-        except Exception as e:
-            logger.error(f"Error in perspective-taking pipeline: {str(e)}")
-            # Fallback to standard GPT-4o
-            result['final_answer'] = self._fallback_completion(
+        # Step 1: Rephrase question for Sora-2
+        rephrased_prompt = self._rephrase_for_sora(question, image)
+        logger.info(f"Rephrased for Sora: {rephrased_prompt}")
+        
+        if return_intermediate:
+            result['rephrased_prompt'] = rephrased_prompt
+        
+        # Step 2: Generate mental rotation video with Sora-2
+        if use_mental_rotation:
+            video_data = self.sora.generate_video(
+                prompt=rephrased_prompt,
                 image=image,
-                question=question,
-                context=context_messages,
-                temperature=temperature,
-                max_tokens=max_tokens
+                duration=self.config.sora_video_length,
+                fps=self.config.sora_fps
             )
-            result['confidence'] = 0.5  # Lower confidence for fallback
-            result['error'] = str(e)
+            logger.info("Video generation complete")
+            
+            # Step 3: Extract frames
+            frames = self.frame_extractor.extract_frames(
+                video_data,
+                num_frames=self.config.frame_extraction_count,
+                window_size=self.config.frame_extraction_window
+            )
+            logger.info(f"Extracted {len(frames)} frames")
+            
+            if return_intermediate:
+                result['frames'] = [self._encode_frame(f) for f in frames]
+        else:
+            # Use only original image if mental rotation disabled
+            frames = []
+        
+        # Step 4: Parallel perspective analysis
+        perspectives = self._analyze_perspectives(
+            original_image=image,
+            frames=frames,
+            question=question,
+            context=context_messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        logger.info(f"Analyzed {len(perspectives)} perspectives")
+        
+        if return_intermediate:
+            result['perspectives'] = perspectives
+        
+        # Step 5: Synthesize final answer
+        final_answer, confidence = self.synthesizer.synthesize(
+            perspectives=perspectives,
+            original_question=question,
+            context=context_messages
+        )
+        
+        result['final_answer'] = final_answer
+        result['confidence'] = confidence
+        
+        logger.info(f"Pipeline complete. Confidence: {confidence:.2f}")
         
         return result
     
@@ -245,11 +229,8 @@ Video prompt:"""
         
         # Collect results
         for future in as_completed(futures):
-            try:
-                result = future.result(timeout=self.config.timeout)
-                perspectives.append(result)
-            except Exception as e:
-                logger.error(f"Error analyzing perspective: {str(e)}")
+            result = future.result(timeout=self.config.timeout)
+            perspectives.append(result)
         
         return perspectives
     

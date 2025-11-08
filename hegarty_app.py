@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""
+Hegarty Gradio Web App
+Simple image + question interface for perspective-taking AI
+"""
+
+import os
+import base64
+import logging
+import tempfile
+import shutil
+import json
+import asyncio
+import httpx
+from pathlib import Path
+from typing import Optional, Tuple, List
+from datetime import datetime
+
+from dotenv import load_dotenv
+load_dotenv()
+
+import gradio as gr
+from PIL import Image
+import cv2
+import numpy as np
+from hegarty import HergartyClient, Config
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global client
+hegarty_client: Optional[HergartyClient] = None
+
+# Create temp directory for debugging
+TEMP_DIR = Path(tempfile.gettempdir()) / "hegarty_debug"
+TEMP_DIR.mkdir(exist_ok=True)
+logger.info(f"Debug files will be saved to: {TEMP_DIR}")
+
+
+def encode_image_to_base64(image: Image.Image) -> str:
+    """Convert PIL Image to base64 string."""
+    import io
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    buffer = io.BytesIO()
+    image.save(buffer, format='JPEG', quality=85)
+    return f"data:image/jpeg;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+
+
+async def download_sora_video(video_url: str, save_path: Path, api_key: str) -> bool:
+    """Download video from Sora API."""
+    try:
+        headers = {"Authorization": f"Bearer {api_key}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(video_url, headers=headers, timeout=300.0)
+            response.raise_for_status()
+            
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            
+            logger.info(f"Video downloaded to: {save_path}")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to download video: {e}")
+        return False
+
+
+def extract_frames_from_video(video_path: Path, output_dir: Path, num_frames: int = 5) -> List[Path]:
+    """Extract frames from video file using OpenCV."""
+    try:
+        # Create output directory
+        output_dir.mkdir(exist_ok=True)
+        
+        # Open video
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            logger.error(f"Cannot open video: {video_path}")
+            return []
+        
+        # Get video properties
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        duration = total_frames / fps if fps > 0 else 0
+        
+        logger.info(f"Video: {total_frames} frames, {fps:.2f} FPS, {duration:.2f}s")
+        
+        # Calculate frame indices (focus on last 30 frames as per original logic)
+        window_size = min(30, total_frames)
+        start_frame = max(0, total_frames - window_size)
+        frame_indices = np.linspace(start_frame, total_frames - 1, num_frames, dtype=int)
+        
+        extracted_frames = []
+        for i, frame_idx in enumerate(frame_indices):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            
+            if ret:
+                frame_path = output_dir / f"frame_{i:03d}_idx{frame_idx}.jpg"
+                cv2.imwrite(str(frame_path), frame)
+                extracted_frames.append(frame_path)
+                logger.info(f"Extracted frame {i+1}/{num_frames} from index {frame_idx}")
+        
+        cap.release()
+        return extracted_frames
+        
+    except Exception as e:
+        logger.error(f"Frame extraction failed: {e}")
+        return []
+
+
+def create_session_folder() -> Path:
+    """Create a timestamped folder for this session."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_dir = TEMP_DIR / f"session_{timestamp}"
+    session_dir.mkdir(exist_ok=True)
+    return session_dir
+
+
+def initialize_hegarty():
+    """Initialize Hegarty client from environment variables."""
+    global hegarty_client
+    
+    openai_key = os.getenv("OPENAI_API_KEY")
+    sora_key = os.getenv("SORA_API_KEY")
+    
+    config = Config(temperature=0.3, max_tokens=1000, sora_video_length=4, 
+                   frame_extraction_count=5, max_workers=6)
+    
+    hegarty_client = HergartyClient(
+        openai_api_key=openai_key,
+        sora_api_key=sora_key,
+        config=config,
+        use_mini_detector=False  # Use full detector, no fallbacks
+    )
+
+
+def process_image_question(image: Optional[Image.Image], question: str) -> Tuple[str, Optional[str], List[str], str]:
+    """
+    Process image and question through Hegarty with full debugging info.
+    
+    Returns:
+        Tuple of (answer, video_path, frame_paths, debug_info)
+        - answer: The AI's response
+        - video_path: Path to downloaded Sora video (None if not available)
+        - frame_paths: List of paths to extracted frames
+        - debug_info: Debug information string
+    """
+    global hegarty_client
+    
+    if not hegarty_client:
+        initialize_hegarty()
+    
+    if not image:
+        return "Please upload an image first.", None, [], ""
+    
+    # Create session folder for this request
+    session_dir = create_session_folder()
+    
+    try:
+        # Save original image
+        original_image_path = session_dir / "original_image.jpg"
+        image.save(original_image_path)
+        
+        image_base64 = encode_image_to_base64(image)
+        
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": question},
+                {"type": "image_url", "image_url": {"url": image_base64}}
+            ]
+        }]
+        
+        # Get intermediate results from Hegarty
+        debug_info = [f"Session folder: {session_dir}"]
+        debug_info.append(f"Question: {question}")
+        debug_info.append(f"Original image saved: {original_image_path}")
+        
+        # First check if this will trigger perspective detection
+        is_perspective, confidence = hegarty_client.detector.analyze(question)
+        debug_info.append(f"Perspective detection: {is_perspective} (confidence: {confidence:.2f})")
+        
+        # Call Hegarty agent directly to get intermediate results
+        result = hegarty_client.agent.process(
+            image=image_base64,
+            question=question,
+            return_intermediate=True
+        )
+        
+        answer = result['final_answer']
+        final_confidence = result.get('confidence', 0.0)
+        debug_info.append(f"Final confidence: {final_confidence:.2f}")
+        
+        # Save debug data
+        debug_data = {
+            'question': question,
+            'is_perspective_task': is_perspective,
+            'detection_confidence': confidence,
+            'final_answer': answer,
+            'final_confidence': final_confidence,
+            'result': result
+        }
+        
+        debug_file = session_dir / "debug_data.json"
+        with open(debug_file, 'w') as f:
+            json.dump(debug_data, f, indent=2, default=str)
+        
+        video_path = None
+        frame_paths = []
+        
+        # Check if video was generated and try to download it
+        if 'rephrased_prompt' in result:
+            debug_info.append(f"Rephrased prompt: {result['rephrased_prompt']}")
+            
+            # Try to extract video from Sora result
+            if hasattr(hegarty_client.agent, 'sora') and hasattr(hegarty_client.agent.sora, 'last_job_result'):
+                sora_result = hegarty_client.agent.sora.last_job_result
+                debug_info.append(f"Sora job result: {sora_result}")
+                
+                # Look for video URL in the result
+                video_url = None
+                if isinstance(sora_result, dict):
+                    # Check various possible fields for video URL
+                    for field in ['url', 'video_url', 'download_url', 'output_url', 'file_url']:
+                        if field in sora_result:
+                            video_url = sora_result[field]
+                            break
+                    
+                    # Also check nested objects
+                    if not video_url and 'output' in sora_result:
+                        output = sora_result['output']
+                        if isinstance(output, dict):
+                            for field in ['url', 'video_url', 'download_url']:
+                                if field in output:
+                                    video_url = output[field]
+                                    break
+                
+                if video_url:
+                    debug_info.append(f"Found video URL: {video_url}")
+                    
+                    # Download video
+                    video_file_path = session_dir / "sora_video.mp4"
+                    sora_key = os.getenv("SORA_API_KEY")
+                    
+                    if asyncio.run(download_sora_video(video_url, video_file_path, sora_key)):
+                        # Only set video_path if file actually exists and has content
+                        if video_file_path.exists() and video_file_path.stat().st_size > 0:
+                            video_path = str(video_file_path)
+                            debug_info.append(f"Video downloaded: {video_path}")
+                            
+                            # Extract frames
+                            frames_dir = session_dir / "frames"
+                            extracted_frames = extract_frames_from_video(
+                                video_file_path, 
+                                frames_dir,
+                                num_frames=5
+                            )
+                            
+                            # Only include frames that actually exist
+                            valid_frames = [str(f) for f in extracted_frames if f.exists() and f.stat().st_size > 0]
+                            frame_paths = valid_frames
+                            debug_info.append(f"Extracted {len(frame_paths)} valid frames: {frame_paths}")
+                        else:
+                            debug_info.append("Video file not created or empty")
+                    else:
+                        debug_info.append("Failed to download video")
+                else:
+                    debug_info.append("No video URL found in Sora result")
+            else:
+                debug_info.append("No Sora result available")
+        
+        debug_info_str = "\n".join(debug_info)
+        
+        # Save debug info
+        with open(session_dir / "debug_info.txt", 'w') as f:
+            f.write(debug_info_str)
+        
+        return answer, video_path, frame_paths, debug_info_str
+        
+    except Exception as e:
+        error_msg = f"Error processing request: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        
+        # Save error info
+        with open(session_dir / "error.txt", 'w') as f:
+            f.write(f"Error: {error_msg}\nQuestion: {question}\n")
+        
+        return error_msg, None, [], f"Error occurred. Session folder: {session_dir}"
+
+
+def create_interface():
+    """Create debugging interface: image + question = answer + video + frames + debug."""
+    with gr.Blocks(title="Hegarty AI - Debug Mode", theme=gr.themes.Soft()) as interface:
+        gr.HTML("<h1 style='text-align: center;'>🧠 Hegarty AI - Debug Mode</h1>")
+        gr.HTML("<p style='text-align: center;'>Enhanced spatial reasoning with Sora video generation debugging</p>")
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.HTML("<h3>📤 Input</h3>")
+                image_input = gr.Image(label="Upload Image", type="pil")
+                question_input = gr.Textbox(
+                    label="Ask a question about the image", 
+                    placeholder="What would this look like if rotated 90 degrees?",
+                    lines=2
+                )
+                submit_btn = gr.Button("🚀 Process with Hegarty", variant="primary", size="lg")
+            
+            with gr.Column(scale=2):
+                gr.HTML("<h3>💬 Answer</h3>")
+                answer_output = gr.Textbox(label="Final Answer", lines=6, interactive=False)
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.HTML("<h3>🎬 Sora Video</h3>")
+                video_output = gr.Video(label="Generated Video", interactive=False, value=None)
+                
+            with gr.Column(scale=1):
+                gr.HTML("<h3>🖼️ Extracted Frames</h3>")
+                frames_gallery = gr.Gallery(
+                    label="Frames Used for Analysis",
+                    show_label=True,
+                    elem_id="gallery",
+                    columns=3,
+                    rows=2,
+                    height="auto",
+                    value=[]
+                )
+        
+        with gr.Row():
+            gr.HTML("<h3>🔍 Debug Information</h3>")
+            debug_output = gr.Textbox(
+                label="Processing Details",
+                lines=10,
+                interactive=False,
+                max_lines=20
+            )
+        
+        # Add examples
+        gr.HTML("<h3>💡 Example Questions</h3>")
+        examples = [
+            "What would this look like if rotated 90 degrees clockwise?",
+            "If I flip this object upside down, what face would be visible?",
+            "What would I see if I looked at this from the other side?",
+            "How would this appear if rotated 180 degrees?",
+            "What's the view from the back of this object?"
+        ]
+        
+        example_buttons = []
+        for example in examples:
+            btn = gr.Button(example, size="sm")
+            example_buttons.append(btn)
+            btn.click(
+                fn=lambda ex=example: ex,
+                inputs=[],
+                outputs=[question_input]
+            )
+        
+        submit_btn.click(
+            fn=process_image_question,
+            inputs=[image_input, question_input],
+            outputs=[answer_output, video_output, frames_gallery, debug_output]
+        )
+    
+    return interface
+
+
+def main():
+    """Launch the simple interface."""
+    print("🧠 Starting Hegarty AI...")
+    
+    interface = create_interface()
+    interface.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=True
+    )
+
+
+if __name__ == "__main__":
+    main()

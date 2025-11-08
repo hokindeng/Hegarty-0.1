@@ -4,16 +4,19 @@ HergartyClient: OpenAI-compatible client interface for the Hegarty agent
 
 import os
 import logging
-from typing import Optional, List, Dict, Any, Union
-from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
 import time
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load environment variables from .env file
+except ImportError:
+    pass  # python-dotenv not installed, skip
+
 from openai import OpenAI
-from openai.types.chat import ChatCompletion, ChatCompletionMessage
-from openai.types.chat.chat_completion import Choice
 
 from .agent import HergartyAgent
-from .detector import PerspectiveDetector
+from .gpt_detector import GPT4OPerspectiveDetector
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,7 @@ class HergartyClient:
         openai_api_key: Optional[str] = None,
         sora_api_key: Optional[str] = None,
         config: Optional[Config] = None,
+        use_mini_detector: bool = True,  # Use gpt-4o-mini for detection by default
         **kwargs
     ):
         """
@@ -65,6 +69,7 @@ class HergartyClient:
             openai_api_key: OpenAI API key for GPT-4o access
             sora_api_key: Sora API key (optional, uses simulation if not provided)
             config: Configuration object
+            use_mini_detector: Use gpt-4o-mini for detection (default: True)
             **kwargs: Additional configuration parameters
         """
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -86,8 +91,13 @@ class HergartyClient:
             config=self.config
         )
         
-        # Initialize perspective detector
-        self.detector = PerspectiveDetector(self.config)
+        # Initialize GPT-4o perspective detector
+        self.detector = GPT4OPerspectiveDetector(
+            openai_client=self.openai_client,
+            use_mini=use_mini_detector
+        )
+        model_type = "gpt-4o-mini" if use_mini_detector else "gpt-4o"
+        logger.info(f"Using {model_type} for perspective detection")
         
         # Create chat.completions interface
         self.chat = type('Chat', (), {'completions': self})()
@@ -200,33 +210,4 @@ class HergartyClient:
         )
         
         return response.choices[0].message.content
-    
-    def batch_process(
-        self,
-        queries: List[Dict[str, Any]],
-        max_workers: Optional[int] = None
-    ) -> List[CompletionResponse]:
-        """
-        Process multiple queries in batch.
-        
-        Args:
-            queries: List of query dictionaries with 'image' and 'question' keys
-            max_workers: Maximum number of parallel workers
-        
-        Returns:
-            List of completion responses
-        """
-        results = []
-        for query in queries:
-            messages = [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": query.get('question')},
-                    {"type": "image_url", "image_url": {"url": query.get('image')}}
-                ] if query.get('image') else query.get('question')
-            }]
-            
-            response = self.create(messages=messages)
-            results.append(response)
-        
-        return results
+

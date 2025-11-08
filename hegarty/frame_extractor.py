@@ -6,6 +6,8 @@ import logging
 from typing import List, Dict, Any, Optional
 import numpy as np
 from PIL import Image
+from pathlib import Path
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -42,17 +44,23 @@ class FrameExtractor:
         Extract key frames from video data.
         
         Args:
-            video_data: Video data dictionary from Sora
+            video_data: Video data dictionary from Sora (contains video_path)
             num_frames: Number of frames to extract
             window_size: Size of window to consider (last N frames)
         
         Returns:
             List of extracted frames as numpy arrays
         """
+        # Check for video path first (new method)
+        video_path = video_data.get('video_path')
+        if video_path:
+            return self._extract_frames_from_video(video_path, num_frames, window_size)
+        
+        # Fallback to old method for backwards compatibility
         frames = video_data.get('frames', [])
         
         if not frames:
-            logger.error("No frames in video data")
+            logger.error("No video path or frames in video data")
             return []
         
         # Get last window_size frames
@@ -213,7 +221,11 @@ class FrameExtractor:
         hist, _ = np.histogram(gray, bins=256, range=(0, 256))
         
         # Normalize histogram
-        hist = hist / hist.sum()
+        hist_sum = hist.sum()
+        if hist_sum > 0:
+            hist = hist / hist_sum
+        else:
+            hist = hist + 1e-10  # Avoid division by zero
         
         # Calculate entropy
         entropy = -np.sum(hist * np.log2(hist + 1e-10))
@@ -265,28 +277,128 @@ class FrameExtractor:
         
         return np.array(resized)
     
-    def extract_single_frame(
+    def _extract_frames_from_video(
         self,
-        video_data: Dict[str, Any],
-        position: float = 0.5
-    ) -> Optional[np.ndarray]:
+        video_path: str,
+        num_frames: int = 5,
+        window_size: int = 30
+    ) -> List[np.ndarray]:
         """
-        Extract a single frame at a specific position.
+        Extract frames directly from video file using OpenCV.
         
         Args:
-            video_data: Video data dictionary
-            position: Position in video (0.0 to 1.0)
+            video_path: Path to video file
+            num_frames: Number of frames to extract
+            window_size: Size of window to consider (last N frames)
         
         Returns:
-            Single frame or None
+            List of extracted frames as numpy arrays
         """
-        frames = video_data.get('frames', [])
+        if not Path(video_path).exists():
+            logger.error(f"Video file not found: {video_path}")
+            return []
         
-        if not frames:
-            return None
+        logger.info(f"Extracting frames from video: {video_path}")
         
-        # Calculate frame index
-        idx = int(position * (len(frames) - 1))
-        idx = max(0, min(idx, len(frames) - 1))
+        try:
+            # Open video file
+            cap = cv2.VideoCapture(video_path)
+            
+            if not cap.isOpened():
+                logger.error(f"Failed to open video file: {video_path}")
+                return []
+            
+            # Get video properties
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            duration = total_frames / fps if fps > 0 else 0
+            
+            logger.info(f"Video properties: {total_frames} frames, {fps:.2f} FPS, {duration:.2f}s")
+            
+            if total_frames == 0:
+                logger.error("Video has no frames")
+                cap.release()
+                return []
+            
+            # Read all frames first
+            all_frames = []
+            frame_idx = 0
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Convert BGR to RGB for consistency with PIL
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                all_frames.append(frame_rgb)
+                frame_idx += 1
+            
+            cap.release()
+            
+            if not all_frames:
+                logger.error("No frames could be read from video")
+                return []
+            
+            logger.info(f"Read {len(all_frames)} frames from video")
+            
+            # Apply window_size limit (get last N frames)
+            if len(all_frames) > window_size:
+                all_frames = all_frames[-window_size:]
+                logger.info(f"Using last {window_size} frames")
+            
+            # Apply extraction strategy
+            if self.strategy == "uniform":
+                extracted = self._uniform_extraction(all_frames, num_frames)
+            elif self.strategy == "adaptive":
+                extracted = self._adaptive_extraction(all_frames, num_frames)
+            elif self.strategy == "keyframe":
+                extracted = self._keyframe_extraction(all_frames, num_frames)
+            else:
+                logger.warning(f"Unknown strategy {self.strategy}, using uniform")
+                extracted = self._uniform_extraction(all_frames, num_frames)
+            
+            # Save extracted frames to temp directory for debugging
+            self._save_frames_to_temp(extracted, video_path)
+            
+            logger.info(f"Successfully extracted {len(extracted)} frames using {self.strategy} strategy")
+            
+            return extracted
         
-        return frames[idx]
+        except Exception as e:
+            logger.error(f"Error extracting frames from video {video_path}: {e}")
+            return []
+    
+    def _save_frames_to_temp(self, frames: List[np.ndarray], video_path: str) -> None:
+        """
+        Save extracted frames to temp directory for debugging and intermediate storage.
+        
+        Args:
+            frames: List of extracted frames
+            video_path: Original video path (used for naming)
+        """
+        try:
+            # Create temp directory for frames
+            temp_dir = Path.cwd() / "temp" / "frames"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get video filename for naming
+            video_name = Path(video_path).stem
+            
+            # Save each frame
+            for i, frame in enumerate(frames):
+                frame_filename = f"{video_name}_frame_{i:03d}.png"
+                frame_path = temp_dir / frame_filename
+                
+                # Convert numpy array to PIL Image and save
+                if frame.dtype != np.uint8:
+                    frame = (frame * 255).astype(np.uint8)
+                
+                image = Image.fromarray(frame)
+                image.save(frame_path)
+            
+            logger.info(f"Saved {len(frames)} extracted frames to {temp_dir}")
+        
+        except Exception as e:
+            logger.warning(f"Failed to save frames to temp directory: {e}")
+

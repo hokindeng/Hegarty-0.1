@@ -69,42 +69,35 @@ class PerspectiveSynthesizer:
         )
         
         # Call GPT-4o for final synthesis
-        try:
-            messages = context or []
-            messages.append({
-                "role": "system",
-                "content": "You are an expert at spatial reasoning and perspective analysis. Synthesize multiple viewpoint analyses into a comprehensive answer."
-            })
-            messages.append({
-                "role": "user",
-                "content": synthesis_prompt
-            })
-            
-            response = self.openai_client.chat.completions.create(
-                model=self.config.gpt_model if self.config else "gpt-4o",
-                messages=messages,
-                temperature=0.2,  # Lower temperature for synthesis
-                max_tokens=self.config.max_tokens if self.config else 2000
-            )
-            
-            final_answer = response.choices[0].message.content
-            
-            # Calculate final confidence
-            confidence = self._calculate_final_confidence(
-                consistency_score,
-                perspectives,
-                final_answer
-            )
-            
-            logger.info(f"Synthesis complete. Confidence: {confidence:.2f}")
-            
-            return final_answer, confidence
-            
-        except Exception as e:
-            logger.error(f"Error in synthesis: {str(e)}")
-            # Fallback to best single perspective
-            best_perspective = self._select_best_perspective(perspectives)
-            return best_perspective.get('analysis', 'Unable to synthesize perspectives.'), 0.3
+        messages = context or []
+        messages.append({
+            "role": "system",
+            "content": "You are an expert at spatial reasoning and perspective analysis. Synthesize multiple viewpoint analyses into a comprehensive answer."
+        })
+        messages.append({
+            "role": "user",
+            "content": synthesis_prompt
+        })
+        
+        response = self.openai_client.chat.completions.create(
+            model=self.config.gpt_model if self.config else "gpt-4o",
+            messages=messages,
+            temperature=0.2,  # Lower temperature for synthesis
+            max_tokens=self.config.max_tokens if self.config else 2000
+        )
+        
+        final_answer = response.choices[0].message.content
+        
+        # Calculate final confidence
+        confidence = self._calculate_final_confidence(
+            consistency_score,
+            perspectives,
+            final_answer
+        )
+        
+        logger.info(f"Synthesis complete. Confidence: {confidence:.2f}")
+        
+        return final_answer, confidence
     
     def _format_perspectives(
         self,
@@ -282,31 +275,4 @@ Final Synthesized Answer:"""
         best = max(perspectives, key=lambda p: len(p.get('analysis', '')))
         
         return best
-    
-    def batch_synthesize(
-        self,
-        batch_perspectives: List[List[Dict[str, Any]]],
-        questions: List[str],
-        contexts: Optional[List[List[Dict]]] = None
-    ) -> List[Tuple[str, float]]:
-        """
-        Synthesize multiple sets of perspectives in batch.
-        
-        Args:
-            batch_perspectives: List of perspective sets
-            questions: List of original questions
-            contexts: Optional list of contexts
-        
-        Returns:
-            List of (answer, confidence) tuples
-        """
-        results = []
-        
-        for i, perspectives in enumerate(batch_perspectives):
-            question = questions[i] if i < len(questions) else ""
-            context = contexts[i] if contexts and i < len(contexts) else None
-            
-            answer, confidence = self.synthesize(perspectives, question, context)
-            results.append((answer, confidence))
-        
-        return results
+

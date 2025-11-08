@@ -1,51 +1,91 @@
 """
-SoraInterface: Interface for Sora-2 video generation
+SoraInterface: Interface for Sora-2 video generation using real OpenAI API
 """
 
-import logging
+import os
 import time
-import base64
-from typing import Optional, Dict, Any
-import numpy as np
+import asyncio
+import logging
+import tempfile
+from typing import Optional, Dict, Any, Union, Tuple
+from pathlib import Path
+from io import BytesIO
 from PIL import Image
-import io
-import json
+import base64
+import httpx
 
 logger = logging.getLogger(__name__)
+
+try:
+    import cv2
+except ImportError as e:
+    raise ImportError("Please `pip install opencv-python httpx pillow`") from e
 
 
 class SoraInterface:
     """
-    Interface for Sora-2 video generation API.
-    
-    This class handles communication with Sora-2 for generating mental rotation videos.
-    If Sora API is not available, it provides a simulation mode for development.
+    Real Sora-2 video generation interface using OpenAI API.
     """
-    
-    def __init__(self, api_key: Optional[str] = None, config: Optional[Any] = None):
+
+    def __init__(
+        self,
+        api_key: str,
+        config: Optional[Any] = None,
+        model: str = "sora-2",
+        base_url: str = "https://api.openai.com/v1"
+    ):
         """
-        Initialize Sora interface.
+        Initialize Sora interface with real API.
         
         Args:
-            api_key: Sora API key (optional, uses simulation if not provided)
+            api_key: OpenAI API key with Sora access
             config: Configuration object
+            model: Sora model to use ("sora-2" or "sora-2-pro")
+            base_url: API base URL
         """
+        if not api_key:
+            raise ValueError("Sora API key is required")
+        
         self.api_key = api_key
         self.config = config
-        self.simulation_mode = not api_key
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.request_timeout_sec = 300.0
         
-        if self.simulation_mode:
-            logger.warning("Sora API key not provided. Running in simulation mode.")
-        else:
-            logger.info("Sora interface initialized with API access")
-    
+        # Store last job result for debugging
+        self.last_job_result = None
+        
+        # Model constraints
+        self.model_constraints = self._get_model_constraints(model)
+        self.upload_field_name = "input_reference"
+        self.allowed_mimes = {"image/jpeg", "image/png", "image/webp"}
+        
+        logger.info(f"Sora interface initialized with {model}")
+
+    def _get_model_constraints(self, model: str) -> Dict[str, Any]:
+        constraints = {
+            "sora-2": {
+                "durations": ["4", "8", "12"],
+                "sizes": ["1280x720", "720x1280"],
+                "description": "OpenAI Sora-2 - High-quality video generation",
+            },
+            "sora-2-pro": {
+                "durations": ["4", "8", "12"],
+                "sizes": ["1280x720", "720x1280", "1024x1792", "1792x1024"],
+                "description": "OpenAI Sora-2-Pro - Enhanced model with more resolution options",
+            },
+        }
+        if model not in constraints:
+            raise ValueError(f"Unknown Sora model: {model}. Available: {list(constraints.keys())}")
+        return constraints[model]
+
     def generate_video(
         self,
         prompt: str,
         image: str,
-        duration: int = 3,
+        duration: int = 4,
         fps: int = 10,
-        resolution: str = "1024x1024"
+        resolution: str = "1280x720"
     ) -> Dict[str, Any]:
         """
         Generate a video showing mental rotation or perspective change.
@@ -53,8 +93,8 @@ class SoraInterface:
         Args:
             prompt: Text prompt describing the transformation
             image: Base64 encoded starting image
-            duration: Video duration in seconds
-            fps: Frames per second
+            duration: Video duration in seconds (4, 8, or 12)
+            fps: Frames per second (ignored, Sora uses its own FPS)
             resolution: Output resolution
         
         Returns:
@@ -62,94 +102,27 @@ class SoraInterface:
         """
         logger.info(f"Generating video: {prompt[:50]}...")
         
-        if self.simulation_mode:
-            return self._simulate_video_generation(
-                prompt, image, duration, fps, resolution
-            )
-        else:
-            return self._call_sora_api(
-                prompt, image, duration, fps, resolution
-            )
-    
-    def _call_sora_api(
-        self,
-        prompt: str,
-        image: str,
-        duration: int,
-        fps: int,
-        resolution: str
-    ) -> Dict[str, Any]:
-        """
-        Call actual Sora-2 API for video generation.
+        # Convert base64 image to temp file
+        temp_image_path = self._base64_to_temp_file(image)
         
-        Note: This is a placeholder for when Sora-2 API becomes available.
-        """
-        # TODO: Implement actual Sora API call when available
-        # For now, fall back to simulation
-        logger.info("Sora-2 API not yet available, using simulation")
-        return self._simulate_video_generation(
-            prompt, image, duration, fps, resolution
-        )
-    
-    def _simulate_video_generation(
-        self,
-        prompt: str,
-        image: str,
-        duration: int,
-        fps: int,
-        resolution: str
-    ) -> Dict[str, Any]:
-        """
-        Simulate video generation for development and testing.
-        
-        Creates synthetic frames that represent a rotation transformation.
-        """
-        logger.info("Simulating video generation...")
-        
-        # Parse resolution
-        width, height = map(int, resolution.split('x'))
-        
-        # Calculate total frames
-        total_frames = duration * fps
-        
-        # Decode base image if provided
-        base_image = self._decode_base64_image(image) if image else None
-        
-        # Generate simulated frames
-        frames = []
-        for i in range(total_frames):
-            # Calculate rotation angle for this frame
-            angle = (i / total_frames) * 360
+        try:
+            # Run async generation
+            result = asyncio.run(self._generate_video_async(
+                prompt=prompt,
+                image_path=temp_image_path,
+                duration=str(duration),
+                size=resolution
+            ))
             
-            # Create or transform frame
-            if base_image:
-                frame = self._rotate_image(base_image, angle)
-            else:
-                frame = self._generate_synthetic_frame(i, total_frames, width, height)
+            return result
             
-            frames.append(frame)
-        
-        # Simulate processing time
-        time.sleep(0.5)  # Simulate API latency
-        
-        logger.info(f"Generated {len(frames)} frames")
-        
-        return {
-            'frames': frames,
-            'metadata': {
-                'duration': duration,
-                'fps': fps,
-                'resolution': resolution,
-                'total_frames': total_frames,
-                'prompt': prompt,
-                'simulation': True
-            }
-        }
-    
-    def _decode_base64_image(self, image_data: str) -> np.ndarray:
-        """
-        Decode base64 image to numpy array.
-        """
+        finally:
+            # Clean up temp file
+            if temp_image_path and Path(temp_image_path).exists():
+                Path(temp_image_path).unlink()
+
+    def _base64_to_temp_file(self, image_data: str) -> str:
+        """Convert base64 image to temporary file."""
         # Remove data URL prefix if present
         if image_data.startswith('data:'):
             image_data = image_data.split(',')[1]
@@ -157,94 +130,240 @@ class SoraInterface:
         # Decode base64
         image_bytes = base64.b64decode(image_data)
         
-        # Open with PIL and convert to numpy
-        image = Image.open(io.BytesIO(image_bytes))
-        return np.array(image)
-    
-    def _rotate_image(self, image: np.ndarray, angle: float) -> np.ndarray:
-        """
-        Rotate an image by a given angle.
-        """
-        # Convert to PIL for rotation
-        pil_image = Image.fromarray(image.astype(np.uint8))
+        # Create temp file in project temp directory
+        temp_dir = Path.cwd() / "temp"
+        temp_dir.mkdir(exist_ok=True)
+        temp_path = temp_dir / f"sora_input_{int(time.time())}.png"
         
-        # Rotate
-        rotated = pil_image.rotate(angle, expand=False, fillcolor=(255, 255, 255))
+        # Save image
+        with open(temp_path, "wb") as f:
+            f.write(image_bytes)
         
-        return np.array(rotated)
-    
-    def _generate_synthetic_frame(
+        return str(temp_path)
+
+    async def _generate_video_async(
         self,
-        frame_idx: int,
-        total_frames: int,
-        width: int,
-        height: int
-    ) -> np.ndarray:
-        """
-        Generate a synthetic frame for simulation.
+        prompt: str,
+        image_path: str,
+        duration: str = "4",
+        size: str = "1280x720"
+    ) -> Dict[str, Any]:
+        """Async video generation using real Sora API."""
         
-        Creates a simple geometric shape that rotates.
-        """
-        # Create blank frame
-        frame = np.ones((height, width, 3), dtype=np.uint8) * 255
+        # Validate duration and size
+        if duration not in self.model_constraints["durations"]:
+            raise ValueError(f"Duration {duration} not supported. Allowed: {self.model_constraints['durations']}")
         
-        # Calculate rotation angle
-        angle = (frame_idx / total_frames) * 2 * np.pi
+        if size not in self.model_constraints["sizes"]:
+            raise ValueError(f"Size {size} not supported. Allowed: {self.model_constraints['sizes']}")
         
-        # Draw rotating rectangle
-        center_x, center_y = width // 2, height // 2
-        rect_width, rect_height = width // 3, height // 4
+        # Prepare image for upload
+        filename, file_bytes, mime = await self._prepare_image_for_upload(image_path, size, auto_pad=True)
         
-        # Calculate rotated corners
-        corners = []
-        for dx, dy in [(-rect_width//2, -rect_height//2),
-                      (rect_width//2, -rect_height//2),
-                      (rect_width//2, rect_height//2),
-                      (-rect_width//2, rect_height//2)]:
-            # Apply rotation
-            rx = dx * np.cos(angle) - dy * np.sin(angle)
-            ry = dx * np.sin(angle) + dy * np.cos(angle)
-            
-            # Translate to center
-            corners.append((int(center_x + rx), int(center_y + ry)))
+        # Create video job
+        video_id = await self._create_video_job(
+            prompt=prompt,
+            image_file=(filename, file_bytes, mime),
+            duration_str=duration,
+            size=size
+        )
         
-        # Draw rectangle (simplified - just fill with color)
-        # In production, use proper polygon drawing
-        for y in range(height):
-            for x in range(width):
-                # Simple point-in-polygon test
-                if self._point_in_rect(x, y, corners):
-                    # Color gradient based on rotation
-                    r = int(128 + 127 * np.sin(angle))
-                    g = int(128 + 127 * np.cos(angle))
-                    b = 200
-                    frame[y, x] = [r, g, b]
+        logger.info(f"Sora video generation started. Job ID: {video_id}")
         
-        return frame
-    
-    def _point_in_rect(self, x: int, y: int, corners: list) -> bool:
-        """
-        Simple point-in-polygon test for rectangle.
-        """
-        # Simplified test - checks if point is within bounding box
-        xs = [c[0] for c in corners]
-        ys = [c[1] for c in corners]
+        # Poll for completion
+        job_result = await self._poll_video_job(video_id)
         
-        return (min(xs) <= x <= max(xs)) and (min(ys) <= y <= max(ys))
-    
-    def get_video_status(self, video_id: str) -> Dict[str, Any]:
-        """
-        Get status of video generation job.
+        # Store result for debugging access
+        self.last_job_result = job_result
         
-        Args:
-            video_id: Video generation job ID
+        status = job_result.get("status")
+        if status not in {"completed", "succeeded"}:
+            raise Exception(f"Video generation failed: {job_result}")
         
-        Returns:
-            Status dictionary
-        """
-        # Placeholder for async video generation
+        # Download the actual video file
+        video_path = await self._download_video(job_result, video_id)
+        
+        # Create result in expected format
         return {
-            'status': 'completed',
-            'video_id': video_id,
-            'progress': 100
+            'video_path': video_path,  # Path to the downloaded video file
+            'frames': [],  # Will be populated by frame extractor
+            'metadata': {
+                'video_id': video_id,
+                'duration': duration,
+                'size': size,
+                'prompt': prompt,
+                'status': status,
+                'sora_result': job_result
+            }
         }
+
+    async def _prepare_image_for_upload(
+        self,
+        image_path: str,
+        target_size: str,
+        auto_pad: bool = True
+    ) -> Tuple[str, BytesIO, str]:
+        """Prepare image for Sora API upload."""
+        path = Path(image_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {image_path}")
+
+        target_w, target_h = map(int, target_size.split("x"))
+
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+            current_w, current_h = img.size
+
+            if (current_w, current_h) != (target_w, target_h) and auto_pad:
+                # Resize with padding
+                padded = Image.new("RGB", (target_w, target_h), color=(128, 128, 128))
+                scale = min(target_w / current_w, target_h / current_h)
+                new_w = max(1, int(current_w * scale))
+                new_h = max(1, int(current_h * scale))
+                resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                x_offset = (target_w - new_w) // 2
+                y_offset = (target_h - new_h) // 2
+                padded.paste(resized, (x_offset, y_offset))
+                img = padded
+
+        # Determine format
+        ext = path.suffix.lower()
+        if ext in {".jpg", ".jpeg"}:
+            mime = "image/jpeg"
+            pil_format = "JPEG"
+            filename = path.stem + ".jpg"
+        elif ext == ".webp":
+            mime = "image/webp"
+            pil_format = "WEBP" 
+            filename = path.stem + ".webp"
+        else:
+            mime = "image/png"
+            pil_format = "PNG"
+            filename = path.stem + ".png"
+
+        bio = BytesIO()
+        img.save(bio, format=pil_format)
+        bio.seek(0)
+        return filename, bio, mime
+
+    def _auth_headers(self, idempotency_key: Optional[str] = None) -> Dict[str, str]:
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        return headers
+
+    async def _create_video_job(
+        self,
+        prompt: str,
+        image_file: Tuple[str, BytesIO, str],
+        duration_str: str,
+        size: str,
+        idempotency_key: Optional[str] = None
+    ) -> str:
+        """Create Sora video generation job."""
+        url = f"{self.base_url}/videos"
+        
+        headers = self._auth_headers(
+            idempotency_key=idempotency_key or f"sora-{int(time.time()*1000)}"
+        )
+
+        filename, file_bytes, mime = image_file
+
+        data = {
+            "model": self.model,
+            "prompt": prompt,
+            "size": size,
+            "seconds": duration_str
+        }
+
+        files = {
+            self.upload_field_name: (filename, file_bytes, mime)
+        }
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.request(
+                "POST", url, 
+                headers=headers, 
+                data=data, 
+                files=files,
+                timeout=self.request_timeout_sec
+            )
+
+        if resp.status_code != 200:
+            raise Exception(f"Failed to create video job: {resp.status_code} {resp.text}")
+
+        job = resp.json()
+        video_id = job.get("id")
+        if not video_id:
+            raise Exception(f"Invalid create response (no id): {job}")
+        return video_id
+
+    async def _poll_video_job(self, video_id: str, max_wait_time: int = 14400) -> Dict[str, Any]:
+        """Poll video job until completion."""
+        url = f"{self.base_url}/videos/{video_id}"
+        headers = self._auth_headers()
+        terminal = {"completed", "succeeded", "failed", "cancelled", "rejected"}
+
+        start = time.time()
+        interval = 2.0
+
+        async with httpx.AsyncClient() as client:
+            while time.time() - start < max_wait_time:
+                resp = await client.request(
+                    "GET", url, 
+                    headers=headers,
+                    timeout=self.request_timeout_sec
+                )
+                
+                if resp.status_code != 200:
+                    logger.warning(f"Poll {video_id} -> {resp.status_code}")
+                    await asyncio.sleep(interval)
+                    continue
+
+                job = resp.json()
+                status = job.get("status", "unknown")
+                progress = job.get("progress")
+
+                logger.info(f"[{video_id}] status={status} progress={progress}")
+
+                if status in terminal:
+                    if status not in {"completed", "succeeded"}:
+                        err = job.get("error")
+                        raise Exception(f"Video generation failed: status={status} error={err}")
+                    return job
+
+                await asyncio.sleep(interval)
+                interval = min(10.0, interval * 1.25)
+
+        raise TimeoutError(f"Video generation timed out after {max_wait_time} seconds")
+
+    async def _download_video(self, job_result: Dict[str, Any], video_id: str) -> str:
+        """Download the generated video file using direct content endpoint."""
+        # Use direct content endpoint - no need to search for URLs in job result
+        content_url = f"{self.base_url}/videos/{video_id}/content"
+        headers = self._auth_headers()
+        
+        logger.info(f"Downloading video from content endpoint: {content_url}")
+        
+        # Create temp directory path
+        temp_dir = Path.cwd() / "temp"
+        temp_dir.mkdir(exist_ok=True)
+        
+        # Download video
+        video_filename = f"sora_video_{video_id}_{int(time.time())}.mp4"
+        video_path = temp_dir / video_filename
+        
+        async with httpx.AsyncClient() as client:
+            async with client.stream("GET", content_url, headers=headers, timeout=self.request_timeout_sec) as resp:
+                if resp.status_code != 200:
+                    error_text = await resp.aread() if hasattr(resp, 'aread') else 'Unknown error'
+                    raise Exception(f"Failed to download video: {resp.status_code} {error_text}")
+                
+                with open(video_path, "wb") as f:
+                    async for chunk in resp.aiter_bytes(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+        
+        logger.info(f"Video saved to: {video_path}")
+        return str(video_path)
+
