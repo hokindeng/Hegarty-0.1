@@ -131,16 +131,12 @@ Respond with JSON:
         """Rephrase question for video generation using mllama"""
         self._init_model()
         
-        prompt = f"""Create a concise video prompt for visualizing this spatial transformation.
+        prompt = f"""Given this question about perspective-taking, create a simple video prompt.
 
 Question: {question}
 
-Describe:
-1. Starting state (what's in the image)
-2. Transformation needed
-3. Ending state
-
-Keep under 50 words, focus on visual transformation.
+Extract who or what perspective is being asked about, then format as:
+"Please rotate the scene to the [person/object/viewpoint] perspective"
 
 Video prompt:"""
         
@@ -150,7 +146,7 @@ Video prompt:"""
         # Check for refusal
         refusal_phrases = ["I'm sorry", "I cannot", "I can't", "unable to"]
         if any(phrase.lower() in result.lower() for phrase in refusal_phrases):
-            return "Camera rotating 360 degrees around scene to show all perspectives"
+            raise ValueError(f"Model refused to generate video prompt: {result}")
         
         return result
     
