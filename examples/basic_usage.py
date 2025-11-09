@@ -12,8 +12,6 @@ Demonstrates the perspective-taking pipeline:
 
 import os
 from hegarty import HergartyClient
-from hegarty.mllm import OpenAIMLLM
-from openai import OpenAI
 import base64
 from pathlib import Path
 
@@ -31,7 +29,7 @@ def main():
     print("Hegarty Perspective-Taking Pipeline")
     print("=" * 60)
     
-    # Initialize client (uses GPT-4o-mini for detection by default)
+    # Initialize client
     client = HergartyClient(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         # Sora API key is optional - will use simulation if not provided
@@ -39,8 +37,7 @@ def main():
     )
     
     print("✓ Client initialized")
-    print("  - Using GPT-4o-mini for perspective detection")
-    print("  - Using GPT-4o for multi-perspective analysis")
+    print("  - Using GPT-4o for detection and analysis")
     print("  - Using Sora-2 simulation for video generation")
     
     # Example 1: Perspective-taking question (triggers full pipeline)
@@ -93,8 +90,6 @@ def main():
     print("Example 3: GPT-4o Perspective Detection")
     print("-" * 60)
     
-    detector = OpenAIMLLM(client=OpenAI(api_key=os.getenv("OPENAI_API_KEY")), model="gpt-4o-mini", temperature=0.1)
-    
     test_questions = [
         "What is the weather today?",
         "Rotate this shape 180 degrees and describe it",
@@ -106,7 +101,7 @@ def main():
     
     print("Testing perspective detection:\n")
     for q in test_questions:
-        is_perspective, confidence = detector.detect_perspective(q)
+        is_perspective, confidence = client.agent.mllm.detect_perspective(q)
         status = "✓ Perspective" if is_perspective else "✗ Standard"
         print(f"{status} ({confidence:.2f}): {q}")
     

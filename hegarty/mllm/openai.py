@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 from openai import OpenAI
-from .base import MLLMProvider, DetectionResult
+from .base import MLLMProvider
 
 logger = logging.getLogger(__name__)
 

@@ -32,6 +32,7 @@ class HergartyAgent:
         config: Optional[Config] = None
     ):
         self.config = config or Config()
+        self.openai_client = openai_client
         
         self.mllm = OpenAIMLLM(
             client=openai_client,
@@ -58,15 +59,21 @@ class HergartyAgent:
         return_intermediate: bool = False,
         session_dir: Optional[Path] = None
     ) -> Dict[str, Any]:
-        self.mllm.session_dir = session_dir
-        self.mllm.call_counter = 0
-        
         logger.info(f"Processing: {question[:100]}...")
+        
+        # Create session-specific MLLM instance for proper logging
+        mllm = OpenAIMLLM(
+            client=self.openai_client,
+            model=self.config.gpt_model,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+            session_dir=session_dir
+        ) if self.openai_client else self.mllm
         
         result = {'final_answer': None, 'confidence': 0.0}
         
         # Step 1: Rephrase for video
-        rephrased = self.mllm.rephrase_for_video(question, image)
+        rephrased = mllm.rephrase_for_video(question, image)
         logger.info(f"Rephrased: {rephrased}")
         
         if return_intermediate:
@@ -97,6 +104,7 @@ class HergartyAgent:
         
         # Step 3: Parallel analysis
         perspectives = self._analyze_perspectives(
+            mllm=mllm,
             original_image=image,
             frames=frames,
             question=question,
@@ -114,7 +122,7 @@ class HergartyAgent:
             perspectives=perspectives,
             original_question=question,
             context=context_messages,
-            mllm_provider=self.mllm
+            mllm_provider=mllm
         )
         
         result['final_answer'] = final_answer
@@ -125,6 +133,7 @@ class HergartyAgent:
     
     def _analyze_perspectives(
         self,
+        mllm: OpenAIMLLM,
         original_image: str,
         frames: List[np.ndarray],
         question: str,
@@ -138,7 +147,7 @@ class HergartyAgent:
             futures = []
             
             futures.append(executor.submit(
-                self.mllm.analyze_perspective,
+                mllm.analyze_perspective,
                 image=original_image,
                 question=question,
                 perspective_label="original",
@@ -150,7 +159,7 @@ class HergartyAgent:
             for i, frame in enumerate(frames):
                 frame_base64 = self._encode_frame(frame)
                 futures.append(executor.submit(
-                    self.mllm.analyze_perspective,
+                    mllm.analyze_perspective,
                     image=frame_base64,
                     question=question,
                     perspective_label=f"perspective_{i+1}",

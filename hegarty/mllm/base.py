@@ -2,15 +2,6 @@
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
-from dataclasses import dataclass
-
-
-@dataclass
-class DetectionResult:
-    is_perspective_task: bool
-    confidence: float
-    reasoning: str
-    detected_aspects: List[str]
 
 
 class MLLMProvider(ABC):

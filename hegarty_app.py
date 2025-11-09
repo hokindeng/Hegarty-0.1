@@ -105,8 +105,7 @@ def initialize_hegarty():
     hegarty_client = HergartyClient(
         openai_api_key=openai_key,
         sora_api_key=sora_key,
-        config=config,
-        use_mini_detector=False  # Use full detector, no fallbacks
+        config=config
     )
 
 
@@ -138,25 +137,19 @@ def process_image_question(image: Optional[Image.Image], question: str) -> Tuple
     
     image_base64 = encode_image_to_base64(image)
     
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": question},
-            {"type": "image_url", "image_url": {"url": image_base64}}
-        ]
-    }]
-    
     # Get intermediate results from Hegarty
     debug_info = [f"Session folder: {session_dir}"]
     debug_info.append(f"Question: {question}")
     debug_info.append(f"Original image saved: {original_image_path}")
     
-    # First check if this will trigger perspective detection
-    is_perspective, confidence = hegarty_client.detector.analyze(question)
-    debug_info.append(f"Perspective detection: {is_perspective} (confidence: {confidence:.2f})")
+    # Check if this will trigger perspective detection
+    is_perspective = False
+    confidence = 0.0
+    if hegarty_client.agent.mllm:
+        is_perspective, confidence = hegarty_client.agent.mllm.detect_perspective(question)
+        debug_info.append(f"Perspective detection: {is_perspective} (confidence: {confidence:.2f})")
     
-    # Call Hegarty agent directly to get intermediate results
-    # Pass session directory for organizing files
+    # Call agent with session directory for organizing files
     result = hegarty_client.agent.process(
         image=image_base64,
         question=question,

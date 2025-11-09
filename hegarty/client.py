@@ -44,7 +44,6 @@ class HergartyClient:
         openai_api_key: Optional[str] = None,
         sora_api_key: Optional[str] = None,
         config: Optional[Config] = None,
-        use_mini_detector: bool = True,
         **kwargs
     ):
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -61,15 +60,6 @@ class HergartyClient:
             sora_api_key=self.sora_api_key,
             config=self.config
         )
-        
-        self.detector = OpenAIMLLM(
-            client=self.openai_client,
-            model="gpt-4o-mini" if use_mini_detector else "gpt-4o",
-            temperature=0.1
-        )
-        
-        model_type = "gpt-4o-mini" if use_mini_detector else "gpt-4o"
-        logger.info(f"Using {model_type} for detection")
         
         self.chat = type('Chat', (), {'completions': self})()
         logger.info("HergartyClient initialized")
@@ -104,8 +94,8 @@ class HergartyClient:
                     image_content = item.get('image_url', {}).get('url')
         
         is_perspective_task = False
-        if text_content:
-            is_perspective_task, confidence = self.detector.detect_perspective(text_content)
+        if text_content and self.agent.mllm:
+            is_perspective_task, confidence = self.agent.mllm.detect_perspective(text_content)
             logger.info(f"Perspective: {is_perspective_task} (confidence: {confidence})")
         
         if model == "hegarty-1.0" and is_perspective_task and image_content:
