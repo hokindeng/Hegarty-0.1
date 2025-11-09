@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import base64
 import io
+import time
+import shutil
 
 from openai import OpenAI
 import numpy as np
@@ -25,7 +27,7 @@ class HergartyAgent:
     
     def __init__(
         self,
-        openai_client: OpenAI,
+        openai_client: Optional[OpenAI] = None,
         sora_api_key: Optional[str] = None,
         config: Optional[Config] = None
     ):
@@ -36,12 +38,11 @@ class HergartyAgent:
             model=self.config.gpt_model,
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens
-        )
+        ) if openai_client else None
         
         self.vm = SoraVM(api_key=sora_api_key) if sora_api_key else None
         self.frame_extractor = FrameExtractor(strategy=self.config.frame_extraction_strategy)
         self.synthesizer = PerspectiveSynthesizer()
-        self.executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
         
         logger.info("HergartyAgent initialized")
     
@@ -132,32 +133,34 @@ class HergartyAgent:
         max_tokens: Optional[int]
     ) -> List[Dict[str, Any]]:
         perspectives = []
-        futures = []
         
-        futures.append(self.executor.submit(
-            self.mllm.analyze_perspective,
-            image=original_image,
-            question=question,
-            perspective_label="original",
-            context=context,
-            temperature=temperature,
-            max_tokens=max_tokens
-        ))
-        
-        for i, frame in enumerate(frames):
-            frame_base64 = self._encode_frame(frame)
-            futures.append(self.executor.submit(
+        with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
+            futures = []
+            
+            futures.append(executor.submit(
                 self.mllm.analyze_perspective,
-                image=frame_base64,
+                image=original_image,
                 question=question,
-                perspective_label=f"perspective_{i+1}",
+                perspective_label="original",
                 context=context,
                 temperature=temperature,
                 max_tokens=max_tokens
             ))
-        
-        for future in as_completed(futures):
-            perspectives.append(future.result(timeout=self.config.timeout))
+            
+            for i, frame in enumerate(frames):
+                frame_base64 = self._encode_frame(frame)
+                futures.append(executor.submit(
+                    self.mllm.analyze_perspective,
+                    image=frame_base64,
+                    question=question,
+                    perspective_label=f"perspective_{i+1}",
+                    context=context,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                ))
+            
+            for future in as_completed(futures):
+                perspectives.append(future.result(timeout=self.config.timeout))
         
         return perspectives
     
@@ -172,6 +175,13 @@ class HergartyAgent:
             return f"data:image/png;base64,{base64_string}"
         return frame
     
-    def cleanup(self):
-        self.executor.shutdown(wait=True)
-        logger.info("Cleanup complete")
+    @staticmethod
+    def cleanup_old_sessions(temp_dir: Path = Path.cwd() / "temp", max_age_hours: int = 24):
+        """Remove session directories older than max_age_hours"""
+        if not temp_dir.exists():
+            return
+        cutoff = time.time() - (max_age_hours * 3600)
+        for session_dir in temp_dir.iterdir():
+            if session_dir.is_dir() and session_dir.stat().st_mtime < cutoff:
+                shutil.rmtree(session_dir)
+                logger.info(f"Removed old session: {session_dir.name}")

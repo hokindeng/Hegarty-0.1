@@ -110,14 +110,8 @@ def main():
     failed = 0
     
     for name, test in tests:
-        try:
-            if test():
-                passed += 1
-        except Exception as e:
-            failed += 1
-            print(f"\n❌ {name} FAILED: {e}")
-            import traceback
-            traceback.print_exc()
+        if test():
+            passed += 1
     
     print("\n" + "=" * 60)
     print(f"Results: {passed} passed, {failed} failed")

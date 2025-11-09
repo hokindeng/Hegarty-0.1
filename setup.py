@@ -34,6 +34,9 @@ setup(
         "openai>=1.6.0",
         "numpy>=1.24.0",
         "pillow>=10.0.0",
+        "httpx>=0.24.0",
+        "opencv-python>=4.8.0",
+        "python-dotenv>=1.0.0",
     ],
     extras_require={
         "dev": [

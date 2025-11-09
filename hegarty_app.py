@@ -7,11 +7,7 @@ Simple image + question interface for perspective-taking AI
 import os
 import base64
 import logging
-import tempfile
-import shutil
 import json
-import asyncio
-import httpx
 from pathlib import Path
 from typing import Optional, Tuple, List
 from datetime import datetime
@@ -49,65 +45,42 @@ def encode_image_to_base64(image: Image.Image) -> str:
     return f"data:image/jpeg;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
 
-async def download_sora_video(video_url: str, save_path: Path, api_key: str) -> bool:
-    """Download video from Sora API."""
-    try:
-        headers = {"Authorization": f"Bearer {api_key}"}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(video_url, headers=headers, timeout=300.0)
-            response.raise_for_status()
-            
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
-            
-            logger.info(f"Video downloaded to: {save_path}")
-            return True
-    except Exception as e:
-        logger.error(f"Failed to download video: {e}")
-        return False
-
-
 def extract_frames_from_video(video_path: Path, output_dir: Path, num_frames: int = 5) -> List[Path]:
     """Extract frames from video file using OpenCV."""
-    try:
-        # Create output directory
-        output_dir.mkdir(exist_ok=True)
-        
-        # Open video
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            logger.error(f"Cannot open video: {video_path}")
-            return []
-        
-        # Get video properties
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        duration = total_frames / fps if fps > 0 else 0
-        
-        logger.info(f"Video: {total_frames} frames, {fps:.2f} FPS, {duration:.2f}s")
-        
-        # Calculate frame indices (focus on last 30 frames as per original logic)
-        window_size = min(30, total_frames)
-        start_frame = max(0, total_frames - window_size)
-        frame_indices = np.linspace(start_frame, total_frames - 1, num_frames, dtype=int)
-        
-        extracted_frames = []
-        for i, frame_idx in enumerate(frame_indices):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            
-            if ret:
-                frame_path = output_dir / f"frame_{i:03d}_idx{frame_idx}.jpg"
-                cv2.imwrite(str(frame_path), frame)
-                extracted_frames.append(frame_path)
-                logger.info(f"Extracted frame {i+1}/{num_frames} from index {frame_idx}")
-        
-        cap.release()
-        return extracted_frames
-        
-    except Exception as e:
-        logger.error(f"Frame extraction failed: {e}")
+    # Create output directory
+    output_dir.mkdir(exist_ok=True)
+    
+    # Open video
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        logger.error(f"Cannot open video: {video_path}")
         return []
+    
+    # Get video properties
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    duration = total_frames / fps if fps > 0 else 0
+    
+    logger.info(f"Video: {total_frames} frames, {fps:.2f} FPS, {duration:.2f}s")
+    
+    # Calculate frame indices (focus on last 30 frames as per original logic)
+    window_size = min(30, total_frames)
+    start_frame = max(0, total_frames - window_size)
+    frame_indices = np.linspace(start_frame, total_frames - 1, num_frames, dtype=int)
+    
+    extracted_frames = []
+    for i, frame_idx in enumerate(frame_indices):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        
+        if ret:
+            frame_path = output_dir / f"frame_{i:03d}_idx{frame_idx}.jpg"
+            cv2.imwrite(str(frame_path), frame)
+            extracted_frames.append(frame_path)
+            logger.info(f"Extracted frame {i+1}/{num_frames} from index {frame_idx}")
+    
+    cap.release()
+    return extracted_frames
 
 
 def create_session_folder() -> Path:
@@ -159,145 +132,84 @@ def process_image_question(image: Optional[Image.Image], question: str) -> Tuple
     # Create session folder for this request
     session_dir = create_session_folder()
     
-    try:
-        # Save original image
-        original_image_path = session_dir / "original_image.jpg"
-        image.save(original_image_path)
+    # Save original image
+    original_image_path = session_dir / "original_image.jpg"
+    image.save(original_image_path)
+    
+    image_base64 = encode_image_to_base64(image)
+    
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": question},
+            {"type": "image_url", "image_url": {"url": image_base64}}
+        ]
+    }]
+    
+    # Get intermediate results from Hegarty
+    debug_info = [f"Session folder: {session_dir}"]
+    debug_info.append(f"Question: {question}")
+    debug_info.append(f"Original image saved: {original_image_path}")
+    
+    # First check if this will trigger perspective detection
+    is_perspective, confidence = hegarty_client.detector.analyze(question)
+    debug_info.append(f"Perspective detection: {is_perspective} (confidence: {confidence:.2f})")
+    
+    # Call Hegarty agent directly to get intermediate results
+    # Pass session directory for organizing files
+    result = hegarty_client.agent.process(
+        image=image_base64,
+        question=question,
+        return_intermediate=True,
+        session_dir=session_dir
+    )
+    
+    answer = result['final_answer']
+    final_confidence = result.get('confidence', 0.0)
+    debug_info.append(f"Final confidence: {final_confidence:.2f}")
+    
+    # Save debug data
+    debug_data = {
+        'question': question,
+        'is_perspective_task': is_perspective,
+        'detection_confidence': confidence,
+        'final_answer': answer,
+        'final_confidence': final_confidence,
+        'result': result
+    }
+    
+    debug_file = session_dir / "debug_data.json"
+    with open(debug_file, 'w') as f:
+        json.dump(debug_data, f, indent=2, default=str)
+    
+    video_path = None
+    frame_paths = []
+    
+    if 'rephrased_prompt' in result:
+        debug_info.append(f"Rephrased prompt: {result['rephrased_prompt']}")
+    
+    # Video path is saved by SoraVM in session_dir
+    video_files = list(session_dir.glob("sora_*.mp4"))
+    if video_files:
+        video_path = str(video_files[0])
+        debug_info.append(f"Video found: {video_path}")
         
-        image_base64 = encode_image_to_base64(image)
-        
-        messages = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": question},
-                {"type": "image_url", "image_url": {"url": image_base64}}
-            ]
-        }]
-        
-        # Get intermediate results from Hegarty
-        debug_info = [f"Session folder: {session_dir}"]
-        debug_info.append(f"Question: {question}")
-        debug_info.append(f"Original image saved: {original_image_path}")
-        
-        # First check if this will trigger perspective detection
-        is_perspective, confidence = hegarty_client.detector.analyze(question)
-        debug_info.append(f"Perspective detection: {is_perspective} (confidence: {confidence:.2f})")
-        
-        # Call Hegarty agent directly to get intermediate results
-        # Pass session directory for organizing files
-        result = hegarty_client.agent.process(
-            image=image_base64,
-            question=question,
-            return_intermediate=True,
-            session_dir=session_dir
-        )
-        
-        answer = result['final_answer']
-        final_confidence = result.get('confidence', 0.0)
-        debug_info.append(f"Final confidence: {final_confidence:.2f}")
-        
-        # Save debug data
-        debug_data = {
-            'question': question,
-            'is_perspective_task': is_perspective,
-            'detection_confidence': confidence,
-            'final_answer': answer,
-            'final_confidence': final_confidence,
-            'result': result
-        }
-        
-        debug_file = session_dir / "debug_data.json"
-        with open(debug_file, 'w') as f:
-            json.dump(debug_data, f, indent=2, default=str)
-        
-        video_path = None
-        frame_paths = []
-        
-        # Check if video was generated and try to download it
-        if 'rephrased_prompt' in result:
-            debug_info.append(f"Rephrased prompt: {result['rephrased_prompt']}")
-            
-            # Try to extract video from Sora result
-            if hasattr(hegarty_client.agent, 'sora') and hasattr(hegarty_client.agent.sora, 'last_job_result'):
-                sora_result = hegarty_client.agent.sora.last_job_result
-                debug_info.append(f"Sora job result: {sora_result}")
-                
-                # Look for video URL in the result
-                video_url = None
-                if isinstance(sora_result, dict):
-                    # Check various possible fields for video URL
-                    for field in ['url', 'video_url', 'download_url', 'output_url', 'file_url']:
-                        if field in sora_result:
-                            video_url = sora_result[field]
-                            break
-                    
-                    # Also check nested objects
-                    if not video_url and 'output' in sora_result:
-                        output = sora_result['output']
-                        if isinstance(output, dict):
-                            for field in ['url', 'video_url', 'download_url']:
-                                if field in output:
-                                    video_url = output[field]
-                                    break
-                
-                if video_url:
-                    debug_info.append(f"Found video URL: {video_url}")
-                    
-                    # Download video to session directory
-                    video_file_path = session_dir / "sora_video.mp4"
-                    sora_key = os.getenv("SORA_API_KEY")
-                    
-                    if asyncio.run(download_sora_video(video_url, video_file_path, sora_key)):
-                        # Only set video_path if file actually exists and has content
-                        if video_file_path.exists() and video_file_path.stat().st_size > 0:
-                            video_path = str(video_file_path)  # Direct path for Gradio
-                            debug_info.append(f"Video downloaded: {video_path}")
-                            
-                            # Extract frames
-                            frames_dir = session_dir / "frames"
-                            frames_dir.mkdir(exist_ok=True)
-                            
-                            extracted_frames = extract_frames_from_video(
-                                video_file_path, 
-                                frames_dir,
-                                num_frames=5
-                            )
-                            
-                            # Use direct frame paths for Gradio
-                            valid_frames = []
-                            for frame_path in extracted_frames:
-                                if frame_path.exists() and frame_path.stat().st_size > 0:
-                                    valid_frames.append(str(frame_path))
-                            
-                            frame_paths = valid_frames
-                            debug_info.append(f"Extracted {len(frame_paths)} valid frames")
-                            debug_info.append(f"Frame paths: {frame_paths}")
-                        else:
-                            debug_info.append("Video file not created or empty")
-                    else:
-                        debug_info.append("Failed to download video")
-                else:
-                    debug_info.append("No video URL found in Sora result")
-            else:
-                debug_info.append("No Sora result available")
-        
-        debug_info_str = "\n".join(debug_info)
-        
-        # Save debug info
-        with open(session_dir / "debug_info.txt", 'w') as f:
-            f.write(debug_info_str)
-        
-        return answer, video_path, frame_paths, debug_info_str
-        
-    except Exception as e:
-        error_msg = f"Error processing request: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        
-        # Save error info
-        with open(session_dir / "error.txt", 'w') as f:
-            f.write(f"Error: {error_msg}\nQuestion: {question}\n")
-        
-        return error_msg, None, [], f"Error occurred. Session folder: {session_dir}"
+        # Frames are saved by FrameExtractor in session_dir/frames
+        frames_dir = session_dir / "frames"
+        if frames_dir.exists():
+            frame_files = sorted(frames_dir.glob("*.png"))
+            frame_paths = [str(f) for f in frame_files]
+            debug_info.append(f"Found {len(frame_paths)} frames")
+    else:
+        debug_info.append("No video generated")
+    
+    debug_info_str = "\n".join(debug_info)
+    
+    # Save debug info
+    with open(session_dir / "debug_info.txt", 'w') as f:
+        f.write(debug_info_str)
+    
+    return answer, video_path, frame_paths, debug_info_str
 
 
 def create_interface():

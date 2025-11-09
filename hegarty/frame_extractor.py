@@ -45,65 +45,34 @@ class FrameExtractor:
             cap.release()
             return []
         
-        all_frames = []
-        while True:
+        # Calculate which frames to extract (from last window_size frames)
+        start_frame = max(0, total_frames - window_size)
+        frame_count = min(window_size, total_frames)
+        indices = self._calculate_indices(frame_count, num_frames, self.strategy)
+        indices = [start_frame + i for i in indices]
+        
+        # Extract only needed frames
+        extracted = []
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
-            if not ret:
-                break
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            all_frames.append(frame_rgb)
+            if ret:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                extracted.append(frame_rgb)
         
         cap.release()
-        
-        if not all_frames:
-            return []
-        
-        if len(all_frames) > window_size:
-            all_frames = all_frames[-window_size:]
-        
-        extracted = self._extract_by_strategy(all_frames, num_frames)
         self._save_frames(extracted, video_path, session_dir)
         
         logger.info(f"Extracted {len(extracted)} frames")
         return extracted
     
-    def _extract_by_strategy(self, frames: List[np.ndarray], num_frames: int) -> List[np.ndarray]:
-        if len(frames) <= num_frames:
-            return frames
+    def _calculate_indices(self, frame_count: int, num_frames: int, strategy: str) -> List[int]:
+        """Calculate frame indices to extract"""
+        if frame_count <= num_frames:
+            return list(range(frame_count))
         
-        if self.strategy == "adaptive":
-            return self._adaptive_extraction(frames, num_frames)
-        elif self.strategy == "keyframe":
-            return self._keyframe_extraction(frames, num_frames)
-        else:
-            return self._uniform_extraction(frames, num_frames)
-    
-    def _uniform_extraction(self, frames: List[np.ndarray], num_frames: int) -> List[np.ndarray]:
-        step = (len(frames) - 1) / (num_frames - 1)
-        indices = [int(i * step) for i in range(num_frames)]
-        return [frames[i] for i in indices]
-    
-    def _adaptive_extraction(self, frames: List[np.ndarray], num_frames: int) -> List[np.ndarray]:
-        differences = [(i, np.mean((frames[i-1].astype(float) - frames[i].astype(float)) ** 2)) 
-                      for i in range(1, len(frames))]
-        differences.sort(key=lambda x: x[1], reverse=True)
-        
-        selected = [0] + [idx for idx, _ in differences[:num_frames-2]] + [len(frames)-1]
-        selected = sorted(list(set(selected)))[:num_frames]
-        return [frames[i] for i in selected]
-    
-    def _keyframe_extraction(self, frames: List[np.ndarray], num_frames: int) -> List[np.ndarray]:
-        scores = [(i, self._info_score(frame)) for i, frame in enumerate(frames)]
-        scores.sort(key=lambda x: x[1], reverse=True)
-        selected = sorted([idx for idx, _ in scores[:num_frames]])
-        return [frames[i] for i in selected]
-    
-    def _info_score(self, frame: np.ndarray) -> float:
-        gray = np.mean(frame, axis=2) if len(frame.shape) == 3 else frame
-        hist, _ = np.histogram(gray, bins=256, range=(0, 256))
-        hist = hist / (hist.sum() + 1e-10)
-        entropy = -np.sum(hist * np.log2(hist + 1e-10))
-        return entropy
+        step = (frame_count - 1) / (num_frames - 1)
+        return [int(i * step) for i in range(num_frames)]
     
     def _save_frames(self, frames: List[np.ndarray], video_path: str, session_dir: Optional[Path]):
         temp_dir = session_dir / "frames" if session_dir else Path.cwd() / "temp" / "frames"

@@ -11,7 +11,9 @@ Demonstrates the perspective-taking pipeline:
 """
 
 import os
-from hegarty import HergartyClient, GPT4OPerspectiveDetector
+from hegarty import HergartyClient
+from hegarty.mllm import OpenAIMLLM
+from openai import OpenAI
 import base64
 from pathlib import Path
 
@@ -91,7 +93,7 @@ def main():
     print("Example 3: GPT-4o Perspective Detection")
     print("-" * 60)
     
-    detector = GPT4OPerspectiveDetector(use_mini=True)
+    detector = OpenAIMLLM(client=OpenAI(api_key=os.getenv("OPENAI_API_KEY")), model="gpt-4o-mini", temperature=0.1)
     
     test_questions = [
         "What is the weather today?",
@@ -104,11 +106,9 @@ def main():
     
     print("Testing perspective detection:\n")
     for q in test_questions:
-        result = detector.detailed_analysis(q)
-        status = "✓ Perspective" if result.is_perspective_task else "✗ Standard"
-        print(f"{status} ({result.confidence:.2f}): {q}")
-        if result.is_perspective_task:
-            print(f"  └─ Reasoning: {result.reasoning}")
+        is_perspective, confidence = detector.detect_perspective(q)
+        status = "✓ Perspective" if is_perspective else "✗ Standard"
+        print(f"{status} ({confidence:.2f}): {q}")
     
     print("\n" + "=" * 60)
     print("Pipeline demonstration complete!")

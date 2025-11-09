@@ -288,28 +288,25 @@ Final Answer:"""
     
     def _prepare_text_inputs(self, prompt: str) -> Dict[str, Any]:
         """Prepare text-only inputs for mllama"""
-        # This would use the mllama tokenizer
-        # For now, placeholder implementation
-        return {
-            'input_ids': None,  # Tokenized prompt
-            'attention_mask': None
-        }
+        raise NotImplementedError(
+            "MLlamaMLLM is a stub implementation. "
+            "Full implementation requires neuronx-distributed-inference setup. "
+            "See docs/MLLAMA_SETUP.md for instructions."
+        )
     
     def _prepare_multimodal_inputs(self, prompt: str, image: str) -> Dict[str, Any]:
         """Prepare multimodal inputs (text + image) for mllama"""
-        # This would use the mllama processor to handle both text and image
-        # For now, placeholder implementation
-        return {
-            'input_ids': None,  # Tokenized prompt
-            'attention_mask': None,
-            'pixel_values': None,  # Processed image
-            'aspect_ratio_ids': None,
-            'aspect_ratio_mask': None
-        }
+        raise NotImplementedError(
+            "MLlamaMLLM is a stub implementation. "
+            "Full implementation requires neuronx-distributed-inference setup. "
+            "See docs/MLLAMA_SETUP.md for instructions."
+        )
     
     def _decode_outputs(self, outputs) -> str:
         """Decode model outputs to text"""
-        # This would use the mllama tokenizer to decode
-        # For now, placeholder implementation
-        return str(outputs)
+        raise NotImplementedError(
+            "MLlamaMLLM is a stub implementation. "
+            "Full implementation requires neuronx-distributed-inference setup. "
+            "See docs/MLLAMA_SETUP.md for instructions."
+        )
 

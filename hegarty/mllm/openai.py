@@ -57,8 +57,16 @@ Respond with JSON:
         ]
         
         response = self._call(messages, "detect_perspective", temperature=0.1, max_tokens=200, json_mode=True)
-        result_data = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content.strip()
         
+        # Strip markdown code blocks if present
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
+        
+        result_data = json.loads(content)
         is_perspective = bool(result_data.get("is_perspective_task", False))
         confidence = max(0.0, min(1.0, float(result_data.get("confidence", 0.5))))
         

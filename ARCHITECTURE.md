@@ -43,17 +43,16 @@ Future:           Future:
 ```
 hegarty/
 ├── mllm/                    # MLLM Provider Module
-│   ├── __init__.py          # Export MLLMProvider, OpenAIMLLM
+│   ├── __init__.py          # Export MLLMProvider, OpenAIMLLM, MLlamaMLLM
 │   ├── base.py              # Base MLLMProvider interface
 │   ├── openai.py            # OpenAI GPT-4o implementation
-│   ├── anthropic_example.py # Example: Claude implementation
+│   ├── mllama.py            # Llama 3.2 Multimodal implementation
 │   └── [future providers]
 │
 ├── vm/                      # Video Model Provider Module
 │   ├── __init__.py          # Export VMProvider, SoraVM
 │   ├── base.py              # Base VMProvider interface
 │   ├── sora.py              # Sora-2 implementation
-│   ├── runway_example.py    # Example: Runway Gen-3
 │   └── [future providers]
 │
 ├── agent.py                 # Core orchestrator
