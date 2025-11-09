@@ -1,6 +1,6 @@
-# Hegarty: Modular Perspective-Taking Agent
+# Hegarty: Perspective-Taking Artificial Intelligence
 
-A modular framework for enhanced spatial reasoning with pluggable MLLM (Multimodal Large Language Model) and VM (Video Model) providers.
+A modular framework for enhanced spatial reasoning with MLLM (Multimodal Large Language Model) and VM (Video Model).
 
 ## Quick Start
 
