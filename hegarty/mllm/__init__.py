@@ -3,6 +3,7 @@
 from .base import MLLMProvider
 from .openai import OpenAIMLLM
 from .mllama import MLlamaMLLM
+from .qwen import QwenMLLM
 
-__all__ = ["MLLMProvider", "OpenAIMLLM", "MLlamaMLLM"]
+__all__ = ["MLLMProvider", "OpenAIMLLM", "MLlamaMLLM", "QwenMLLM"]
 
