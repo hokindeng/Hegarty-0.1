@@ -19,7 +19,10 @@ import gradio as gr
 from PIL import Image
 import cv2
 import numpy as np
-from hegarty import HergartyClient, Config
+from hegarty import HergartyClient, HergartyAgent, Config
+from hegarty.mllm import OpenAIMLLM, QwenMLLM
+from hegarty.vm import SoraVM
+from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Global client
 hegarty_client: Optional[HergartyClient] = None
+current_provider: str = "openai"  # Default provider
 
 # Create temp directory structure for all session files
 TEMP_DIR = Path.cwd() / "temp"
@@ -92,26 +96,87 @@ def create_session_folder() -> Path:
     return session_dir
 
 
-def initialize_hegarty():
-    """Initialize Hegarty client from environment variables."""
-    global hegarty_client
+def initialize_hegarty(provider: str = "openai", session_dir: Optional[Path] = None):
+    """
+    Initialize Hegarty client with specified MLLM provider.
+    
+    Args:
+        provider: MLLM provider to use ("openai" or "qwen")
+        session_dir: Optional session directory for logging
+    """
+    global hegarty_client, current_provider
     
     openai_key = os.getenv("OPENAI_API_KEY")
     sora_key = os.getenv("SORA_API_KEY")
     
-    config = Config(temperature=0.3, max_tokens=1000, sora_video_length=4, 
-                   frame_extraction_count=5, max_workers=6)
+    # Check env variable for provider preference
+    env_provider = os.getenv("MLLM_PROVIDER", provider).lower()
+    provider = env_provider
+    current_provider = provider
     
-    hegarty_client = HergartyClient(
-        openai_api_key=openai_key,
-        sora_api_key=sora_key,
-        config=config
+    config = Config(
+        temperature=0.3, 
+        max_tokens=1000, 
+        sora_video_length=4, 
+        frame_extraction_count=5, 
+        max_workers=6
     )
+    
+    if provider == "qwen":
+        logger.info("Initializing with Qwen3-VL MLLM provider")
+        
+        # Get Qwen configuration from environment
+        qwen_model = os.getenv("QWEN_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct")
+        qwen_device = os.getenv("QWEN_DEVICE_MAP", "auto")
+        qwen_dtype = os.getenv("QWEN_DTYPE", "auto")
+        qwen_attn = os.getenv("QWEN_ATTENTION", None)  # e.g., "flash_attention_2"
+        
+        # Create agent with Qwen provider
+        agent = HergartyAgent(config=config)
+        agent.mllm = QwenMLLM(
+            model_name=qwen_model,
+            device_map=qwen_device,
+            dtype=qwen_dtype,
+            attn_implementation=qwen_attn,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            session_dir=session_dir
+        )
+        
+        # Add Sora VM if available
+        if sora_key:
+            from hegarty.vm import SoraVM
+            agent.vm = SoraVM(api_key=sora_key)
+        
+        # Create client wrapper
+        hegarty_client = HergartyClient(config=config)
+        hegarty_client.agent = agent
+        
+        logger.info(f"Qwen3-VL initialized with model: {qwen_model}")
+        
+    else:  # default to openai
+        logger.info("Initializing with OpenAI MLLM provider")
+        hegarty_client = HergartyClient(
+            openai_api_key=openai_key,
+            sora_api_key=sora_key,
+            config=config
+        )
+        
+        # Set session dir for OpenAI provider too
+        if session_dir and hegarty_client.agent.mllm:
+            hegarty_client.agent.mllm.session_dir = session_dir
+    
+    logger.info(f"Hegarty initialized with provider: {provider}")
 
 
-def process_image_question(image: Optional[Image.Image], question: str) -> Tuple[str, Optional[str], List[str], str]:
+def process_image_question(image: Optional[Image.Image], question: str, provider: str = "openai") -> Tuple[str, Optional[str], List[str], str]:
     """
     Process image and question through Hegarty with full debugging info.
+    
+    Args:
+        image: Input image
+        question: Question about the image
+        provider: MLLM provider to use ("openai" or "qwen")
     
     Returns:
         Tuple of (answer, video_path, frame_paths, debug_info)
@@ -120,16 +185,18 @@ def process_image_question(image: Optional[Image.Image], question: str) -> Tuple
         - frame_paths: List of paths to extracted frames
         - debug_info: Debug information string
     """
-    global hegarty_client
-    
-    if not hegarty_client:
-        initialize_hegarty()
+    global hegarty_client, current_provider
     
     if not image:
         return "Please upload an image first.", None, [], ""
     
     # Create session folder for this request
     session_dir = create_session_folder()
+    
+    # Initialize or reinitialize if provider changed
+    if not hegarty_client or current_provider != provider:
+        logger.info(f"Initializing with provider: {provider}")
+        initialize_hegarty(provider=provider, session_dir=session_dir)
     
     # Save original image
     original_image_path = session_dir / "original_image.jpg"
@@ -139,6 +206,7 @@ def process_image_question(image: Optional[Image.Image], question: str) -> Tuple
     
     # Get intermediate results from Hegarty
     debug_info = [f"Session folder: {session_dir}"]
+    debug_info.append(f"MLLM Provider: {current_provider.upper()}")
     debug_info.append(f"Question: {question}")
     debug_info.append(f"Original image saved: {original_image_path}")
     
@@ -209,7 +277,7 @@ def create_interface():
     """Create debugging interface: image + question = answer + video + frames + debug."""
     with gr.Blocks(title="Hegarty AI - Debug Mode", theme=gr.themes.Soft()) as interface:
         gr.HTML("<h1 style='text-align: center;'>🧠 Hegarty AI - Debug Mode</h1>")
-        gr.HTML("<p style='text-align: center;'>Enhanced spatial reasoning with Sora video generation debugging</p>")
+        gr.HTML("<p style='text-align: center;'>Enhanced spatial reasoning with multiple MLLM providers</p>")
         
         with gr.Row():
             with gr.Column(scale=1):
@@ -220,6 +288,15 @@ def create_interface():
                     placeholder="What would this look like if rotated 90 degrees?",
                     lines=2
                 )
+                
+                # Provider selection
+                provider_dropdown = gr.Dropdown(
+                    label="MLLM Provider",
+                    choices=["openai", "qwen"],
+                    value=os.getenv("MLLM_PROVIDER", "openai").lower(),
+                    info="Select the multimodal language model provider"
+                )
+                
                 submit_btn = gr.Button("🚀 Process with Hegarty", variant="primary", size="lg")
             
             with gr.Column(scale=2):
@@ -274,7 +351,7 @@ def create_interface():
         
         submit_btn.click(
             fn=process_image_question,
-            inputs=[image_input, question_input],
+            inputs=[image_input, question_input, provider_dropdown],
             outputs=[answer_output, video_output, frames_gallery, debug_output]
         )
     

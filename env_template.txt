@@ -2,9 +2,24 @@
 # Copy this content to a new file named '.env' in the project root
 # and replace the placeholder values with your actual API keys
 
-# Required: OpenAI API key for GPT-4o access
+# ===== MLLM Provider Configuration =====
+# Choose which MLLM provider to use: "openai" or "qwen"
+MLLM_PROVIDER=openai
+
+# Required for OpenAI provider: OpenAI API key for GPT-4o access
 OPENAI_API_KEY=your-openai-api-key-here
 
+# ===== Qwen3-VL Configuration (if using Qwen provider) =====
+# Model name or path
+# QWEN_MODEL=Qwen/Qwen3-VL-235B-A22B-Instruct
+# Device mapping strategy: "auto", "cuda", "cpu", etc.
+# QWEN_DEVICE_MAP=auto
+# Data type: "auto", "bfloat16", "float16"
+# QWEN_DTYPE=auto
+# Attention implementation: "flash_attention_2" for better performance (optional)
+# QWEN_ATTENTION=flash_attention_2
+
+# ===== Video Model Configuration =====
 # Optional: Sora API key for mental rotation videos
 # If not provided, will use simulation mode
 SORA_API_KEY=your-sora-api-key-here
