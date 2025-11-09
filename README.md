@@ -1,240 +1,218 @@
-# Hegarty: A Perspective-Taking Agent for Enhanced Spatial Reasoning
+# Hegarty: Perspective-Taking Artificial Intelligence
 
-## Overview
-
-Hegarty is a Python package that enhances GPT-4o's spatial reasoning by orchestrating it with Sora-2's video generation. It automatically detects perspective-taking tasks and applies mental rotation visualization to improve spatial understanding.
-
-## How It Works
-
-```
-Input: Image + Question
-         ↓
-[Perspective Detection]
-    GPT-4o analyzes if mental rotation is needed
-         ↓
-[Mental Rotation Generation]
-    Sora-2 creates video of the transformation
-         ↓
-[Multi-Perspective Analysis]
-    Extract 5 frames from last 30 frames
-    6 parallel GPT-4o calls (original + 5 frames)
-         ↓
-[Synthesis]
-    GPT-4o synthesizes all perspectives
-         ↓
-Output: Comprehensive Answer
-```
-
-## Installation
-
-### 1. Create and activate virtual environment
-
-```bash
-python3 -m venv venv
-source venv/bin/activate  # Always activate the virtual environment first
-```
-
-### 2. Install the package
-
-```bash
-pip install -e .
-```
-
-### 3. Set up environment variables
-
-Create a `.env` file in the project root using the template:
-
-```bash
-# Copy the template and add your keys
-cp env_template.txt .env
-# Edit .env with your actual API keys
-```
-
-Or create `.env` manually:
-
-```bash
-# .env
-OPENAI_API_KEY=your-openai-api-key-here
-SORA_API_KEY=your-sora-api-key-here  # Optional
-```
-
-**Note:** `.env` files are automatically ignored by git to keep your API keys secure.
-
-**Requirements:**
-- Python 3.9+
-- OpenAI API key (for GPT-4o)
-- Sora API key (optional, uses simulation if not provided)
+A modular framework for enhanced spatial reasoning with MLLM (Multimodal Large Language Model) and VM (Video Model).
 
 ## Quick Start
+
+```bash
+# Install
+pip install -e .
+
+# Set up environment
+cp env_template.txt .env
+# Add your API keys to .env
+
+# Use it
+python3 -c "from hegarty import HergartyClient; print('Ready!')"
+```
+
+## Basic Usage
 
 ```python
 from hegarty import HergartyClient
 
-# Initialize the client (automatically loads from .env file)
 client = HergartyClient()
 
-# Use exactly like OpenAI client
 response = client.chat.completions.create(
     model="hegarty-1.0",
-    messages=[
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "If I rotate this cube 90 degrees clockwise, what face would be visible?"
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": "data:image/jpeg;base64,..."}
-                }
-            ]
-        }
-    ]
+    messages=[{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Is the bag on the watermelon's left?"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+        ]
+    }]
 )
 
 print(response.choices[0].message.content)
 ```
 
-## Web Interface (Gradio)
+## Architecture
 
-Launch the interactive web interface:
-
-```bash
-# Always activate virtual environment first
-source venv/bin/activate
-
-# Run the Gradio web app
-python gradio.py
+```
+┌─────────────────────────────────────┐
+│         HergartyClient              │  OpenAI-compatible API
+└────────────┬────────────────────────┘
+             │
+┌────────────▼────────────────────────┐
+│         HergartyAgent               │  Core orchestrator
+└──┬─────────┬─────────┬──────────────┘
+   │         │         │
+   ▼         ▼         ▼
+┌─────┐  ┌─────┐  ┌──────────┐
+│MLLM │  │ VM  │  │  Frame   │
+│     │  │     │  │Extractor │
+└──┬──┘  └──┬──┘  └──────────┘
+   │        │
+   ▼        ▼
+OpenAI    Sora-2
+Claude    Runway
+Gemini    Pika
+mllama    ...
 ```
 
-The web interface will be available at `http://localhost:7860` and provides:
+## Modular Providers
 
-- **Image upload** with drag-and-drop support
-- **Real-time perspective detection** analysis
-- **Interactive configuration** (temperature, mental rotation toggle)
-- **Visual processing feedback** with intermediate steps
-- **Example questions** for quick testing
+### MLLM Providers (Multimodal LLMs)
 
-**Features:**
-- Automatically detects if questions require perspective-taking
-- Shows confidence scores and reasoning for detection
-- Supports both Sora-2 mental rotation and fallback modes
-- Provides detailed processing information and timing
+**Current:**
+- `OpenAIMLLM` - GPT-4o, GPT-4o-mini
+- `MLlamaMLLM` - Llama 3.2 11B/90B (AWS Neuron)
 
-## Perspective Detection
-
-Hegarty uses **GPT-4o-mini by default** for intelligent, cost-efficient perspective detection.
+**Add your own:**
 
 ```python
-from hegarty import GPT4OPerspectiveDetector
+from hegarty.mllm import MLLMProvider
 
-detector = GPT4OPerspectiveDetector(use_mini=True)  # Default
-result = detector.detailed_analysis("Rotate this shape 180 degrees")
-
-print(f"Perspective task: {result.is_perspective_task}")
-print(f"Confidence: {result.confidence}")
-print(f"Reasoning: {result.reasoning}")
+class YourMLLM(MLLMProvider):
+    def detect_perspective(self, text): ...
+    def rephrase_for_video(self, question, image): ...
+    def analyze_perspective(self, ...): ...
+    def synthesize_perspectives(self, ...): ...
 ```
 
-## Configuration
+### VM Providers (Video Models)
+
+**Current:**
+- `SoraVM` - Sora-2, Sora-2-Pro
+
+**Add your own:**
 
 ```python
-from hegarty import HergartyClient, Config
+from hegarty.vm import VMProvider
+
+class YourVM(VMProvider):
+    def generate_video(self, prompt, image, ...):
+        return {'video_path': '...', 'frames': [], 'metadata': {...}}
+```
+
+## Custom Configuration
+
+```python
+from hegarty import HergartyAgent, Config
+from hegarty.mllm import OpenAIMLLM
+from hegarty.vm import SoraVM
 
 config = Config(
     gpt_model="gpt-4o",
-    temperature=0.3,
-    sora_video_length=3,
+    sora_video_length=4,
     frame_extraction_count=5,
     max_workers=6
 )
 
-client = HergartyClient(config=config)
-```
-
-## Advanced Usage
-
-### Direct Agent Usage
-
-```python
-from hegarty import HergartyAgent
-from openai import OpenAI
-import os
-
-# API keys loaded from .env automatically
-agent = HergartyAgent(
-    openai_client=OpenAI(),  # Uses OPENAI_API_KEY from environment
-    sora_api_key=os.getenv("SORA_API_KEY")
-)
+agent = HergartyAgent(config=config)
+agent.mllm = OpenAIMLLM(...)
+agent.vm = SoraVM(...)
 
 result = agent.process(
-    image=image_data,
-    question="What would this look like rotated?",
-    return_intermediate=True
-)
-
-print(result['final_answer'])
-print(result['perspectives'])
-```
-
-### Frame Extraction Strategies
-
-```python
-from hegarty import Config
-
-config = Config(
-    frame_extraction_strategy="uniform",  # uniform, adaptive, or keyframe
-    frame_extraction_count=5,
-    frame_extraction_window=30
+    image="data:image/jpeg;base64,...",
+    question="What would this look like rotated 90 degrees?",
+    use_mental_rotation=True
 )
 ```
 
-**Strategies:**
-- `uniform`: Equal spacing between frames (default)
-- `adaptive`: Based on visual change detection
-- `keyframe`: Maximum information content
-
-## Architecture
+## Project Structure
 
 ```
 hegarty/
-├── client.py           # OpenAI-compatible client interface
-├── agent.py            # Core orchestration agent
-├── gpt_detector.py     # GPT-4o perspective detection
-├── sora_interface.py   # Sora-2 integration
-├── frame_extractor.py  # Video frame extraction
-├── synthesizer.py      # Multi-perspective synthesis
-└── config.py           # Configuration
+├── mllm/              # MLLM providers
+│   ├── base.py        # Base interface
+│   ├── openai.py      # OpenAI implementation
+│   └── mllama.py      # Llama 3.2 implementation
+├── vm/                # Video model providers
+│   ├── base.py        # Base interface
+│   └── sora.py        # Sora implementation
+├── agent.py           # Core orchestrator
+├── client.py          # OpenAI-compatible client
+├── synthesizer.py     # Perspective synthesis
+├── frame_extractor.py # Frame extraction
+└── config.py          # Configuration
 ```
 
-## Performance
+## Documentation
 
-- **Latency**: 5-8 seconds for complete pipeline
-- **Accuracy**: ~40% improvement on mental rotation benchmarks vs base GPT-4o
-- **Detection**: GPT-4o-mini provides 95% accuracy at ~$0.00015 per detection
+- **`ARCHITECTURE.md`** - Detailed architecture and design principles
+- **`docs/MLLAMA_SETUP.md`** - Setting up Llama 3.2 on AWS Neuron
 
-## Limitations
+## Web Interface
 
-- Requires Sora-2 API access (falls back to simulation if unavailable)
-- Additional latency compared to direct GPT-4o calls
-- Best suited for research and experimentation
+```bash
+python hegarty_app.py
+# Visit http://localhost:7860
+```
+
+## Key Features
+
+- **Modular**: Swap MLLM/VM providers easily
+- **Succinct**: Minimal code, no try-catch blocks
+- **Parallel**: Concurrent perspective analysis
+- **Debuggable**: Session management and logging
+- **Extensible**: Add providers in <100 lines
+
+## Examples
+
+### Mix and Match Providers
+
+```python
+from hegarty.mllm import OpenAIMLLM, MLlamaMLLM
+from hegarty.vm import SoraVM
+
+# Use OpenAI + Sora
+agent = HergartyAgent()
+agent.mllm = OpenAIMLLM(...)
+agent.vm = SoraVM(...)
+
+# Or use Llama 3.2 + Sora (AWS Neuron)
+agent.mllm = MLlamaMLLM(
+    model_path="/path/to/checkpoint",
+    model_size="11B",
+    tp_degree=32
+)
+```
+
+### Environment Variables
+
+```bash
+# .env
+OPENAI_API_KEY=sk-...
+SORA_API_KEY=sk-...
+```
+
+```python
+from hegarty import HergartyClient
+
+client = HergartyClient()  # Loads from .env
+```
+
+## Requirements
+
+- Python 3.9+
+- OpenAI API key (for OpenAI MLLM)
+- Sora API key (optional, for video generation)
+- AWS Neuron instances (optional, for Llama 3.2)
+
+## License
+
+MIT License - see LICENSE file
 
 ## Citation
 
 ```bibtex
 @software{hegarty2024,
-  title = {Hegarty: A Perspective-Taking Agent for Enhanced Spatial Reasoning},
+  title = {Hegarty: A Modular Perspective-Taking Agent},
   year = {2024},
   url = {https://github.com/yourusername/Hegarty-0.1}
 }
 ```
 
-## License
-
-MIT License - see [LICENSE](LICENSE) file
-
-## Acknowledgments
-
-- Named after Mary Hegarty, pioneering researcher in spatial cognition
-- Built on OpenAI's GPT-4o and Sora models
+Named after Mary Hegarty, pioneering researcher in spatial cognition.

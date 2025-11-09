@@ -1,22 +1,17 @@
-"""
-HergartyClient: OpenAI-compatible client interface for the Hegarty agent
-"""
+"""OpenAI-compatible client interface"""
 
 import os
 import logging
 from typing import Optional, List, Dict, Any
 import time
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()  # Load environment variables from .env file
-except ImportError:
-    pass  # python-dotenv not installed, skip
+from dotenv import load_dotenv
+load_dotenv()
 
 from openai import OpenAI
 
 from .agent import HergartyAgent
-from .gpt_detector import GPT4OPerspectiveDetector
+from .mllm import OpenAIMLLM
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -24,85 +19,60 @@ logger = logging.getLogger(__name__)
 
 class CompletionResponse:
     """Wrapper for chat completion responses"""
+    
     def __init__(self, content: str, model: str = "hegarty-1.0", usage: Optional[Dict] = None):
         self.id = f"chatcmpl-{int(time.time())}"
         self.object = "chat.completion"
         self.created = int(time.time())
         self.model = model
-        self.choices = [
-            type('Choice', (), {
-                'index': 0,
-                'message': type('Message', (), {
-                    'role': 'assistant',
-                    'content': content
-                })(),
-                'finish_reason': 'stop'
-            })()
-        ]
-        self.usage = usage or {
-            'prompt_tokens': 0,
-            'completion_tokens': 0,
-            'total_tokens': 0
-        }
+        self.choices = [type('Choice', (), {
+            'index': 0,
+            'message': type('Message', (), {
+                'role': 'assistant',
+                'content': content
+            })(),
+            'finish_reason': 'stop'
+        })()]
+        self.usage = usage or {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
 
 
 class HergartyClient:
-    """
-    OpenAI-compatible client for the Hegarty perspective-taking agent.
-    
-    This client provides the same interface as the OpenAI Python client,
-    but routes perspective-taking tasks through the Hegarty pipeline.
-    """
+    """OpenAI-compatible client for Hegarty perspective-taking agent"""
     
     def __init__(
         self,
         openai_api_key: Optional[str] = None,
         sora_api_key: Optional[str] = None,
         config: Optional[Config] = None,
-        use_mini_detector: bool = True,  # Use gpt-4o-mini for detection by default
+        use_mini_detector: bool = True,
         **kwargs
     ):
-        """
-        Initialize the Hegarty client.
-        
-        Args:
-            openai_api_key: OpenAI API key for GPT-4o access
-            sora_api_key: Sora API key (optional, uses simulation if not provided)
-            config: Configuration object
-            use_mini_detector: Use gpt-4o-mini for detection (default: True)
-            **kwargs: Additional configuration parameters
-        """
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         self.sora_api_key = sora_api_key or os.getenv("SORA_API_KEY")
         
         if not self.openai_api_key:
-            raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY or pass openai_api_key")
+            raise ValueError("OpenAI API key required. Set OPENAI_API_KEY or pass openai_api_key")
         
-        # Initialize configuration
         self.config = config or Config(**kwargs)
-        
-        # Initialize OpenAI client for GPT-4o calls
         self.openai_client = OpenAI(api_key=self.openai_api_key)
         
-        # Initialize Hegarty agent
         self.agent = HergartyAgent(
             openai_client=self.openai_client,
             sora_api_key=self.sora_api_key,
             config=self.config
         )
         
-        # Initialize GPT-4o perspective detector
-        self.detector = GPT4OPerspectiveDetector(
-            openai_client=self.openai_client,
-            use_mini=use_mini_detector
+        self.detector = OpenAIMLLM(
+            client=self.openai_client,
+            model="gpt-4o-mini" if use_mini_detector else "gpt-4o",
+            temperature=0.1
         )
+        
         model_type = "gpt-4o-mini" if use_mini_detector else "gpt-4o"
-        logger.info(f"Using {model_type} for perspective detection")
+        logger.info(f"Using {model_type} for detection")
         
-        # Create chat.completions interface
         self.chat = type('Chat', (), {'completions': self})()
-        
-        logger.info("HergartyClient initialized successfully")
+        logger.info("HergartyClient initialized")
     
     def create(
         self,
@@ -113,44 +83,33 @@ class HergartyClient:
         stream: bool = False,
         **kwargs
     ) -> CompletionResponse:
-        """
-        Create a chat completion, using Hegarty pipeline for perspective tasks.
-        
-        This method mimics the OpenAI chat.completions.create interface.
-        """
         if not messages:
-            raise ValueError("messages parameter is required")
+            raise ValueError("messages parameter required")
         
-        # Extract the last message (current query)
         last_message = messages[-1]
         
         if not isinstance(last_message.get('content'), (str, list)):
             raise ValueError("Message content must be string or list")
         
-        # Handle different content formats
         text_content = None
         image_content = None
         
         if isinstance(last_message['content'], str):
             text_content = last_message['content']
         else:
-            # Parse multimodal content
             for item in last_message['content']:
                 if item.get('type') == 'text':
                     text_content = item.get('text')
                 elif item.get('type') == 'image_url':
                     image_content = item.get('image_url', {}).get('url')
         
-        # Check if this is a perspective-taking task
         is_perspective_task = False
         if text_content:
-            is_perspective_task, confidence = self.detector.analyze(text_content)
-            logger.info(f"Perspective detection: {is_perspective_task} (confidence: {confidence})")
+            is_perspective_task, confidence = self.detector.detect_perspective(text_content)
+            logger.info(f"Perspective: {is_perspective_task} (confidence: {confidence})")
         
-        # Route to appropriate handler
         if model == "hegarty-1.0" and is_perspective_task and image_content:
-            # Use Hegarty pipeline for perspective-taking
-            logger.info("Routing to Hegarty perspective-taking pipeline")
+            logger.info("Routing to Hegarty pipeline")
             response_content = self._handle_perspective_task(
                 text=text_content,
                 image=image_content,
@@ -159,7 +118,6 @@ class HergartyClient:
                 max_tokens=max_tokens
             )
         else:
-            # Use standard GPT-4o
             logger.info("Routing to standard GPT-4o")
             response_content = self._handle_standard_completion(
                 messages=messages,
@@ -178,18 +136,13 @@ class HergartyClient:
         temperature: Optional[float],
         max_tokens: Optional[int]
     ) -> str:
-        """
-        Handle perspective-taking task using the Hegarty pipeline.
-        """
-        # Process through Hegarty agent
         result = self.agent.process(
             image=image,
             question=text,
-            context_messages=messages[:-1],  # Previous conversation context
+            context_messages=messages[:-1],
             temperature=temperature,
             max_tokens=max_tokens
         )
-        
         return result['final_answer']
     
     def _handle_standard_completion(
@@ -199,15 +152,10 @@ class HergartyClient:
         max_tokens: int,
         model: str
     ) -> str:
-        """
-        Handle standard completion using GPT-4o directly.
-        """
         response = self.openai_client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens
         )
-        
         return response.choices[0].message.content
-

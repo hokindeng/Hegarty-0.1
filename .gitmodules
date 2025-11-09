@@ -1,0 +1,3 @@
+[submodule "external/neuronx-distributed-inference"]
+	path = external/neuronx-distributed-inference
+	url = https://github.com/aws-neuron/neuronx-distributed-inference.git
