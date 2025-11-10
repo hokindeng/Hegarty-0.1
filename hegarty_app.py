@@ -126,7 +126,7 @@ def initialize_hegarty(provider: str = "openai", session_dir: Optional[Path] = N
         logger.info("Initializing with Qwen3-VL MLLM provider")
         
         # Get Qwen configuration from environment
-        qwen_model = os.getenv("QWEN_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct")
+        qwen_model = os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
         qwen_device = os.getenv("QWEN_DEVICE_MAP", "auto")
         qwen_dtype = os.getenv("QWEN_DTYPE", "auto")
         qwen_attn = os.getenv("QWEN_ATTENTION", None)  # e.g., "flash_attention_2"

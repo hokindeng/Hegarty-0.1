@@ -40,7 +40,7 @@ Respond with JSON:
     
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3-VL-235B-A22B-Instruct",
+        model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct",
         device_map: str = "auto",
         dtype: str = "auto",
         attn_implementation: Optional[str] = None,
@@ -81,7 +81,7 @@ Respond with JSON:
         if self._initialized:
             return
         
-        logger.info(f"Loading Qwen3-VL model: {self.model_name}")
+        logger.info(f"Loading Qwen VL model: {self.model_name}")
         
         # Prepare model loading kwargs
         kwargs = {
@@ -108,7 +108,7 @@ Respond with JSON:
         self.processor = AutoProcessor.from_pretrained(self.model_name)
         
         self._initialized = True
-        logger.info("Qwen3-VL model loaded successfully")
+        logger.info("Qwen VL model loaded successfully")
     
     def detect_perspective(self, text: str) -> Tuple[bool, float]:
         """Detect if text describes perspective-taking task using Qwen3-VL"""

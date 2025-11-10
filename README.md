@@ -67,7 +67,7 @@ mllama    ...
 
 **Current:**
 - `OpenAIMLLM` - GPT-4o, GPT-4o-mini
-- `QwenMLLM` - Qwen3-VL-235B (Hugging Face Transformers)
+- `QwenMLLM` - Qwen2.5-VL-7B (Hugging Face Transformers)
 - `MLlamaMLLM` - Llama 3.2 11B/90B (AWS Neuron)
 
 **Add your own:**
@@ -177,7 +177,7 @@ agent.vm = SoraVM(...)
 
 # Or use Qwen3-VL (local deployment)
 agent.mllm = QwenMLLM(
-    model_name="Qwen/Qwen3-VL-235B-A22B-Instruct",
+    model_name="Qwen/Qwen2.5-VL-7B-Instruct",
     device_map="auto",
     attn_implementation="flash_attention_2"  # optional, for better performance
 )

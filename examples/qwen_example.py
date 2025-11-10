@@ -9,7 +9,7 @@ from hegarty.vm import SoraVM
 # Note: This requires a GPU with sufficient VRAM (e.g., 80GB for full model)
 # For smaller GPUs, consider using a quantized version or smaller model variant
 qwen_mllm = QwenMLLM(
-    model_name="Qwen/Qwen3-VL-235B-A22B-Instruct",
+    model_name="Qwen/Qwen2.5-VL-7B-Instruct",
     device_map="auto",  # Automatically distributes model across available devices
     dtype="auto",  # Automatically selects appropriate dtype
     attn_implementation="flash_attention_2",  # Optional: for better performance
@@ -98,7 +98,7 @@ print()
 # Tips for using Qwen3-VL
 print("Tips for using Qwen3-VL:")
 print("-" * 50)
-print("1. Model Size: The full 235B model requires ~470GB VRAM")
+print("1. Model Size: 7B runs on a single high-memory GPU; use quantization for smaller GPUs")
 print("2. Consider quantized versions for smaller GPUs (int8, int4)")
 print("3. Use flash_attention_2 for better memory efficiency")
 print("4. Batch size of 1 is recommended for large models")
