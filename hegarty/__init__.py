@@ -6,7 +6,7 @@ __author__ = "Hegarty Research Team"
 from .client import HergartyClient
 from .agent import HergartyAgent
 from .config import Config
-from .mllm import MLLMProvider, OpenAIMLLM, QwenMLLM, MLlamaMLLM
+from .mllm import MLLMProvider, OpenAIMLLM, QwenMLLM
 from .vm import VMProvider, SoraVM
 
 __all__ = [
@@ -16,7 +16,6 @@ __all__ = [
     "MLLMProvider",
     "OpenAIMLLM",
     "QwenMLLM",
-    "MLlamaMLLM",
     "VMProvider",
     "SoraVM"
 ]

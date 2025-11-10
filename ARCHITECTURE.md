@@ -43,10 +43,10 @@ Future:           Future:
 ```
 hegarty/
 ├── mllm/                    # MLLM Provider Module
-│   ├── __init__.py          # Export MLLMProvider, OpenAIMLLM, MLlamaMLLM
+│   ├── __init__.py          # Export MLLMProvider, OpenAIMLLM, QwenMLLM
 │   ├── base.py              # Base MLLMProvider interface
 │   ├── openai.py            # OpenAI GPT-4o implementation
-│   ├── mllama.py            # Llama 3.2 Multimodal implementation
+│   ├── qwen.py              # Qwen VL implementation
 │   └── [future providers]
 │
 ├── vm/                      # Video Model Provider Module
@@ -77,7 +77,7 @@ All MLLM providers must implement:
 
 **Current Implementation:**
 - `OpenAIMLLM` - GPT-4o, GPT-4o-mini
-- `MLlamaMLLM` - Llama 3.2 Multimodal 11B/90B (AWS Neuron accelerators)
+- `QwenMLLM` - Qwen2.5-VL-7B
 
 **Future Providers:**
 - `AnthropicMLLM` - Claude 3.5 Sonnet/Opus

@@ -58,7 +58,7 @@ print(response.choices[0].message.content)
 OpenAI    Sora-2
 Claude    Runway
 Gemini    Pika
-mllama    ...
+Qwen      ...
 ```
 
 ## Modular Providers
@@ -68,7 +68,6 @@ mllama    ...
 **Current:**
 - `OpenAIMLLM` - GPT-4o, GPT-4o-mini
 - `QwenMLLM` - Qwen2.5-VL-7B (Hugging Face Transformers)
-- `MLlamaMLLM` - Llama 3.2 11B/90B (AWS Neuron)
 
 **Add your own:**
 
@@ -129,8 +128,7 @@ hegarty/
 ├── mllm/              # MLLM providers
 │   ├── base.py        # Base interface
 │   ├── openai.py      # OpenAI implementation
-│   ├── qwen.py        # Qwen3-VL implementation
-│   └── mllama.py      # Llama 3.2 implementation
+│   └── qwen.py        # Qwen3-VL implementation
 ├── vm/                # Video model providers
 │   ├── base.py        # Base interface
 │   └── sora.py        # Sora implementation
@@ -145,7 +143,6 @@ hegarty/
 
 - **`ARCHITECTURE.md`** - Detailed architecture and design principles
 - **`docs/QWEN_SETUP.md`** - Setting up Qwen3-VL with Hugging Face Transformers
-- **`docs/MLLAMA_SETUP.md`** - Setting up Llama 3.2 on AWS Neuron
 
 ## Web Interface
 
@@ -167,7 +164,7 @@ python hegarty_app.py
 ### Mix and Match Providers
 
 ```python
-from hegarty.mllm import OpenAIMLLM, QwenMLLM, MLlamaMLLM
+from hegarty.mllm import OpenAIMLLM, QwenMLLM
 from hegarty.vm import SoraVM
 
 # Use OpenAI + Sora
@@ -182,11 +179,10 @@ agent.mllm = QwenMLLM(
     attn_implementation="flash_attention_2"  # optional, for better performance
 )
 
-# Or use Llama 3.2 + Sora (AWS Neuron)
-agent.mllm = MLlamaMLLM(
-    model_path="/path/to/checkpoint",
-    model_size="11B",
-    tp_degree=32
+# Or use Qwen2.5-VL-7B
+agent.mllm = QwenMLLM(
+    model_name="Qwen/Qwen2.5-VL-7B-Instruct",
+    device_map="auto"
 )
 ```
 
@@ -210,7 +206,6 @@ client = HergartyClient()  # Loads from .env
 - OpenAI API key (for OpenAI MLLM)
 - Sora API key (optional, for video generation)
 - PyTorch + Transformers (for Qwen3-VL, requires GPU with sufficient VRAM)
-- AWS Neuron instances (optional, for Llama 3.2)
 
 ## License
 
