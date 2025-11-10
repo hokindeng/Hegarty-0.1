@@ -9,11 +9,10 @@ import io
 import time
 import shutil
 
-from openai import OpenAI
 import numpy as np
 from PIL import Image
 
-from .mllm import OpenAIMLLM
+from .mllm import MLLMProvider
 from .vm import SoraVM
 from .frame_extractor import FrameExtractor
 from .synthesizer import PerspectiveSynthesizer
@@ -27,19 +26,14 @@ class HergartyAgent:
     
     def __init__(
         self,
-        openai_client: Optional[OpenAI] = None,
+        openai_client: Optional[object] = None,
         sora_api_key: Optional[str] = None,
         config: Optional[Config] = None
     ):
         self.config = config or Config()
-        self.openai_client = openai_client
+        self.openai_client = None
         
-        self.mllm = OpenAIMLLM(
-            client=openai_client,
-            model=self.config.gpt_model,
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens
-        ) if openai_client else None
+        self.mllm: Optional[MLLMProvider] = None
         
         self.vm = SoraVM(api_key=sora_api_key) if sora_api_key else None
         self.frame_extractor = FrameExtractor(strategy=self.config.frame_extraction_strategy)
@@ -61,14 +55,8 @@ class HergartyAgent:
     ) -> Dict[str, Any]:
         logger.info(f"Processing: {question[:100]}...")
         
-        # Create session-specific MLLM instance for proper logging
-        mllm = OpenAIMLLM(
-            client=self.openai_client,
-            model=self.config.gpt_model,
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
-            session_dir=session_dir
-        ) if self.openai_client else self.mllm
+        # Use injected MLLM provider (e.g., Qwen)
+        mllm = self.mllm
         
         result = {'final_answer': None, 'confidence': 0.0}
         
@@ -133,7 +121,7 @@ class HergartyAgent:
     
     def _analyze_perspectives(
         self,
-        mllm: OpenAIMLLM,
+        mllm: MLLMProvider,
         original_image: str,
         frames: List[np.ndarray],
         question: str,

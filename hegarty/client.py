@@ -8,10 +8,7 @@ import time
 from dotenv import load_dotenv
 load_dotenv()
 
-from openai import OpenAI
-
 from .agent import HergartyAgent
-from .mllm import OpenAIMLLM
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -41,22 +38,18 @@ class HergartyClient:
     
     def __init__(
         self,
-        openai_api_key: Optional[str] = None,
         sora_api_key: Optional[str] = None,
         config: Optional[Config] = None,
         **kwargs
     ):
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         self.sora_api_key = sora_api_key or os.getenv("SORA_API_KEY")
         
-        if not self.openai_api_key:
-            raise ValueError("OpenAI API key required. Set OPENAI_API_KEY or pass openai_api_key")
-        
         self.config = config or Config(**kwargs)
-        self.openai_client = OpenAI(api_key=self.openai_api_key)
+        self.openai_api_key = None
+        self.openai_client = None
         
         self.agent = HergartyAgent(
-            openai_client=self.openai_client,
+            openai_client=None,
             sora_api_key=self.sora_api_key,
             config=self.config
         )
@@ -108,13 +101,8 @@ class HergartyClient:
                 max_tokens=max_tokens
             )
         else:
-            logger.info("Routing to standard GPT-4o")
-            response_content = self._handle_standard_completion(
-                messages=messages,
-                temperature=temperature or self.config.temperature,
-                max_tokens=max_tokens or self.config.max_tokens,
-                model=self.config.gpt_model
-            )
+            logger.info("OpenAI provider removed; returning message")
+            response_content = "OpenAI provider removed. Provide an image and perspective task to use the Hegarty pipeline."
         
         return CompletionResponse(content=response_content, model=model)
     
@@ -134,18 +122,3 @@ class HergartyClient:
             max_tokens=max_tokens
         )
         return result['final_answer']
-    
-    def _handle_standard_completion(
-        self,
-        messages: List[Dict],
-        temperature: float,
-        max_tokens: int,
-        model: str
-    ) -> str:
-        response = self.openai_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content

@@ -2,4 +2,4 @@
 alwaysApply: true
 ---
 
-For changes in the codebase, always suggest the edits to me, and let me running it.
+For changes in the codebase, always suggest the edits to me, and only edit until I explicitly say so.

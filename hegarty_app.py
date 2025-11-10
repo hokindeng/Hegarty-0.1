@@ -20,9 +20,8 @@ from PIL import Image
 import cv2
 import numpy as np
 from hegarty import HergartyClient, HergartyAgent, Config
-from hegarty.mllm import OpenAIMLLM, QwenMLLM
+from hegarty.mllm import QwenMLLM
 from hegarty.vm import SoraVM
-from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Global client
 hegarty_client: Optional[HergartyClient] = None
-current_provider: str = "openai"  # Default provider
+current_provider: str = "qwen"  # Default provider
 
 # Create temp directory structure for all session files
 TEMP_DIR = Path.cwd() / "temp"
@@ -96,12 +95,12 @@ def create_session_folder() -> Path:
     return session_dir
 
 
-def initialize_hegarty(provider: str = "openai", session_dir: Optional[Path] = None):
+def initialize_hegarty(provider: str = "qwen", session_dir: Optional[Path] = None):
     """
     Initialize Hegarty client with specified MLLM provider.
     
     Args:
-        provider: MLLM provider to use ("openai" or "qwen")
+        provider: MLLM provider to use ("qwen")
         session_dir: Optional session directory for logging
     """
     global hegarty_client, current_provider
@@ -111,7 +110,7 @@ def initialize_hegarty(provider: str = "openai", session_dir: Optional[Path] = N
     
     # Check env variable for provider preference
     env_provider = os.getenv("MLLM_PROVIDER", provider).lower()
-    provider = env_provider
+    provider = "qwen"
     current_provider = provider
     
     config = Config(
@@ -122,61 +121,48 @@ def initialize_hegarty(provider: str = "openai", session_dir: Optional[Path] = N
         max_workers=6
     )
     
-    if provider == "qwen":
-        logger.info("Initializing with Qwen3-VL MLLM provider")
-        
-        # Get Qwen configuration from environment
-        qwen_model = os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
-        qwen_device = os.getenv("QWEN_DEVICE_MAP", "auto")
-        qwen_dtype = os.getenv("QWEN_DTYPE", "auto")
-        qwen_attn = os.getenv("QWEN_ATTENTION", None)  # e.g., "flash_attention_2"
-        
-        # Create agent with Qwen provider
-        agent = HergartyAgent(config=config)
-        agent.mllm = QwenMLLM(
-            model_name=qwen_model,
-            device_map=qwen_device,
-            dtype=qwen_dtype,
-            attn_implementation=qwen_attn,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens,
-            session_dir=session_dir
-        )
-        
-        # Add Sora VM if available
-        if sora_key:
-            from hegarty.vm import SoraVM
-            agent.vm = SoraVM(api_key=sora_key)
-        
-        # Create client wrapper
-        hegarty_client = HergartyClient(config=config)
-        hegarty_client.agent = agent
-        
-        logger.info(f"Qwen3-VL initialized with model: {qwen_model}")
-        
-    else:  # default to openai
-        logger.info("Initializing with OpenAI MLLM provider")
-        hegarty_client = HergartyClient(
-            openai_api_key=openai_key,
-            sora_api_key=sora_key,
-            config=config
-        )
-        
-        # Set session dir for OpenAI provider too
-        if session_dir and hegarty_client.agent.mllm:
-            hegarty_client.agent.mllm.session_dir = session_dir
+    logger.info("Initializing with Qwen3-VL MLLM provider")
+    
+    # Get Qwen configuration from environment
+    qwen_model = os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
+    qwen_device = os.getenv("QWEN_DEVICE_MAP", "auto")
+    qwen_dtype = os.getenv("QWEN_DTYPE", "auto")
+    qwen_attn = os.getenv("QWEN_ATTENTION", None)  # e.g., "flash_attention_2"
+    
+    # Create agent with Qwen provider
+    agent = HergartyAgent(config=config)
+    agent.mllm = QwenMLLM(
+        model_name=qwen_model,
+        device_map=qwen_device,
+        dtype=qwen_dtype,
+        attn_implementation=qwen_attn,
+        temperature=config.temperature,
+        max_tokens=config.max_tokens,
+        session_dir=session_dir
+    )
+    
+    # Add Sora VM if available
+    if sora_key:
+        from hegarty.vm import SoraVM
+        agent.vm = SoraVM(api_key=sora_key)
+    
+    # Create client wrapper
+    hegarty_client = HergartyClient(config=config)
+    hegarty_client.agent = agent
+    
+    logger.info(f"Qwen3-VL initialized with model: {qwen_model}")
     
     logger.info(f"Hegarty initialized with provider: {provider}")
 
 
-def process_image_question(image: Optional[Image.Image], question: str, provider: str = "openai") -> Tuple[str, Optional[str], List[str], str]:
+def process_image_question(image: Optional[Image.Image], question: str, provider: str = "qwen") -> Tuple[str, Optional[str], List[str], str]:
     """
     Process image and question through Hegarty with full debugging info.
     
     Args:
         image: Input image
         question: Question about the image
-        provider: MLLM provider to use ("openai" or "qwen")
+        provider: MLLM provider to use ("qwen")
     
     Returns:
         Tuple of (answer, video_path, frame_paths, debug_info)
@@ -292,8 +278,8 @@ def create_interface():
                 # Provider selection
                 provider_dropdown = gr.Dropdown(
                     label="MLLM Provider",
-                    choices=["openai", "qwen"],
-                    value=os.getenv("MLLM_PROVIDER", "openai").lower(),
+                    choices=["qwen"],
+                    value="qwen",
                     info="Select the multimodal language model provider"
                 )
                 
