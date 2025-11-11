@@ -45,20 +45,34 @@ class FrameExtractor:
             cap.release()
             return []
         
-        # Calculate which frames to extract (from last window_size frames)
-        start_frame = max(0, total_frames - window_size)
-        frame_count = min(window_size, total_frames)
-        indices = self._calculate_indices(frame_count, num_frames, self.strategy)
-        indices = [start_frame + i for i in indices]
-        
-        # Extract only needed frames
         extracted = []
-        for idx in indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        
+        # Special case: if num_frames is 1, just get the last frame
+        if num_frames == 1:
+            logger.info("Extracting only the last frame")
+            # Go to the last frame (total_frames - 1 because frames are 0-indexed)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames - 1)
             ret, frame = cap.read()
             if ret:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 extracted.append(frame_rgb)
+            else:
+                logger.error("Failed to read last frame")
+        else:
+            # Original logic for multiple frames
+            # Calculate which frames to extract (from last window_size frames)
+            start_frame = max(0, total_frames - window_size)
+            frame_count = min(window_size, total_frames)
+            indices = self._calculate_indices(frame_count, num_frames, self.strategy)
+            indices = [start_frame + i for i in indices]
+            
+            # Extract only needed frames
+            for idx in indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if ret:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    extracted.append(frame_rgb)
         
         cap.release()
         self._save_frames(extracted, video_path, session_dir)

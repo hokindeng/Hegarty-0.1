@@ -4,6 +4,8 @@ import time
 import asyncio
 import logging
 import base64
+import json
+from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 from io import BytesIO
@@ -62,6 +64,21 @@ class SoraVM(VMProvider):
     ) -> Dict[str, Any]:
         logger.info(f"Generating video: {prompt[:50]}...")
         
+        # Save the Sora prompt to JSON
+        if session_dir:
+            prompt_data = {
+                "timestamp": datetime.now().isoformat(),
+                "prompt": prompt,
+                "duration": duration,
+                "fps": fps,
+                "resolution": resolution
+            }
+            
+            prompt_file = session_dir / "sora_prompt.json"
+            with open(prompt_file, 'w') as f:
+                json.dump(prompt_data, f, indent=2)
+            logger.info(f"Saved Sora prompt to: {prompt_file}")
+        
         temp_image = self._save_temp_image(image, session_dir)
         
         result = asyncio.run(self._generate_async(
@@ -114,7 +131,9 @@ class SoraVM(VMProvider):
         status = job_result.get("status")
         
         if status not in {"completed", "succeeded"}:
-            raise Exception(f"Video generation failed: {job_result}")
+            # This should not happen as _poll_job already raises on failure
+            logger.error(f"Unexpected job status: {job_result}")
+            raise Exception(f"Video generation failed with status {status}: {job_result}")
         
         video_path = await self._download_video(video_id, session_dir)
         
@@ -182,11 +201,19 @@ class SoraVM(VMProvider):
         data = {"model": self.model, "prompt": prompt, "size": size, "seconds": duration}
         files = {"input_reference": (filename, file_bytes, mime)}
         
+        # Log request details for debugging
+        logger.info(f"Creating Sora job - model: {self.model}, size: {size}, duration: {duration}s")
+        logger.debug(f"Prompt: {prompt}")
+        
         async with httpx.AsyncClient() as client:
             resp = await client.request("POST", url, headers=headers, data=data, files=files, timeout=self.timeout)
         
         if resp.status_code != 200:
-            raise Exception(f"Failed to create job: {resp.status_code} {resp.text}")
+            error_details = ""
+            if resp.headers.get("content-type", "").startswith("application/json"):
+                error_json = resp.json()
+                error_details = f", error: {error_json}"
+            raise Exception(f"Failed to create job: {resp.status_code} {resp.text}{error_details}")
         
         job = resp.json()
         video_id = job.get("id")
@@ -207,6 +234,7 @@ class SoraVM(VMProvider):
                 resp = await client.request("GET", url, headers=headers, timeout=self.timeout)
                 
                 if resp.status_code != 200:
+                    logger.warning(f"Poll request failed: {resp.status_code} {resp.text}")
                     await asyncio.sleep(interval)
                     continue
                 
@@ -217,7 +245,22 @@ class SoraVM(VMProvider):
                 
                 if status in terminal:
                     if status not in {"completed", "succeeded"}:
-                        raise Exception(f"Generation failed: status={status}")
+                        # Extract error details from the response
+                        error_msg = job.get("error", {}).get("message", "No error details provided")
+                        error_type = job.get("error", {}).get("type", "Unknown error type")
+                        error_code = job.get("error", {}).get("code", "No error code")
+                        
+                        # Log the full response for debugging
+                        logger.error(f"Generation failed - Full response: {job}")
+                        
+                        # Raise with detailed error information
+                        raise Exception(
+                            f"Generation failed: status={status}, "
+                            f"error_type={error_type}, "
+                            f"error_code={error_code}, "
+                            f"message={error_msg}, "
+                            f"video_id={video_id}"
+                        )
                     return job
                 
                 await asyncio.sleep(interval)

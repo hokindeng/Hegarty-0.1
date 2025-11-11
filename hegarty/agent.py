@@ -17,6 +17,7 @@ from .vm import SoraVM
 from .frame_extractor import FrameExtractor
 from .synthesizer import PerspectiveSynthesizer
 from .config import Config
+from .camera_detector import CameraDetector
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,16 @@ class HergartyAgent:
         self.frame_extractor = FrameExtractor(strategy=self.config.frame_extraction_strategy)
         self.synthesizer = PerspectiveSynthesizer()
         
+        # Initialize camera detector if enabled
+        self.camera_detector = None
+        if self.config.use_camera_detection:
+            try:
+                self.camera_detector = CameraDetector(model_version=self.config.camera_detector_model)
+                logger.info(f"Camera detector initialized with {self.config.camera_detector_model}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize camera detector: {e}")
+                self.camera_detector = None
+        
         logger.info("HergartyAgent initialized")
     
     def process(
@@ -60,8 +71,43 @@ class HergartyAgent:
         
         result = {'final_answer': None, 'confidence': 0.0}
         
-        # Step 1: Rephrase for video
-        rephrased = mllm.rephrase_for_video(question, image)
+        # Step 1a: Detect camera parameters if enabled
+        camera_params = None
+        if self.camera_detector and use_mental_rotation:
+            try:
+                # Decode base64 image for camera detection
+                if image.startswith('data:'):
+                    image_data = image.split(',')[1]
+                else:
+                    image_data = image
+                image_bytes = base64.b64decode(image_data)
+                pil_image = Image.open(io.BytesIO(image_bytes))
+                
+                # Detect camera parameters
+                camera_params = self.camera_detector.detect_from_image(pil_image)
+                
+                # Save camera detection results
+                if session_dir and camera_params:
+                    import json
+                    camera_file = session_dir / "camera_params.json"
+                    with open(camera_file, 'w') as f:
+                        json.dump({
+                            'roll': camera_params.get('roll', 0.0),
+                            'pitch': camera_params.get('pitch', 0.0),
+                            'vfov': camera_params.get('vfov', 60.0),
+                            'confidence': camera_params.get('confidence', 0.0)
+                        }, f, indent=2)
+                    logger.info(f"Saved camera params to: {camera_file}")
+                
+                if return_intermediate:
+                    result['camera_params'] = camera_params
+                    
+            except Exception as e:
+                logger.warning(f"Camera detection failed: {e}")
+                camera_params = None
+        
+        # Step 1b: Rephrase for video with camera parameters
+        rephrased = mllm.rephrase_for_video(question, image, camera_params)
         logger.info(f"Rephrased: {rephrased}")
         
         if return_intermediate:

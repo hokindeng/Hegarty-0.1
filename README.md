@@ -156,6 +156,7 @@ python hegarty_app.py
 - **Modular**: Swap MLLM/VM providers easily
 - **Succinct**: Minimal code, no try-catch blocks
 - **Parallel**: Concurrent perspective analysis
+- **Camera-Aware**: Automatic camera detection with [PerspectiveFields](https://github.com/jinlinyi/PerspectiveFields)
 - **Debuggable**: Session management and logging
 - **Extensible**: Add providers in <100 lines
 

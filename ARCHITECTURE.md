@@ -30,6 +30,11 @@ Hegarty is a modular perspective-taking agent for enhanced spatial reasoning. Th
 │GPT-4o/4o │  │ Sora-2   │
 │  -mini   │  │Sora-2-Pro│
 └──────────┘  └──────────┘
+              ┌──────────┐
+              │ Wan 2.2  │
+              │5B/14B/   │
+              │Animate   │
+              └──────────┘
 
 Future:           Future:
 ┌──────────┐  ┌──────────┐
@@ -50,9 +55,10 @@ hegarty/
 │   └── [future providers]
 │
 ├── vm/                      # Video Model Provider Module
-│   ├── __init__.py          # Export VMProvider, SoraVM
+│   ├── __init__.py          # Export VMProvider, SoraVM, WanVM
 │   ├── base.py              # Base VMProvider interface
 │   ├── sora.py              # Sora-2 implementation
+│   ├── wan.py               # Wan2.2 implementation (open-source)
 │   └── [future providers]
 │
 ├── agent.py                 # Core orchestrator
@@ -105,7 +111,8 @@ All VM providers must implement:
 ```
 
 **Current Implementation:**
-- `SoraVM` - Sora-2, Sora-2-Pro
+- `SoraVM` - Sora-2, Sora-2-Pro (API-based)
+- `WanVM` - Wan2.2 5B/14B/Animate-14B (open-source, local inference)
 
 **Future Providers:**
 - `RunwayVM` - Runway Gen-3

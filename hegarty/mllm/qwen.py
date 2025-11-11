@@ -11,7 +11,7 @@ from io import BytesIO
 from PIL import Image
 import requests
 import torch
-from transformers import Qwen3VLMoeForConditionalGeneration, AutoProcessor
+from transformers import AutoModelForVision2Seq, AutoProcessor
 
 from .base import MLLMProvider
 
@@ -90,7 +90,7 @@ Respond with JSON:
         
         # Handle dtype
         if self.dtype_str == "auto":
-            kwargs["dtype"] = "auto"
+            kwargs["torch_dtype"] = "auto"
         else:
             kwargs["torch_dtype"] = torch.bfloat16 if self.dtype_str == "bfloat16" else torch.float16
         
@@ -99,7 +99,7 @@ Respond with JSON:
             kwargs["attn_implementation"] = self.attn_implementation
         
         # Load model
-        self.model = Qwen3VLMoeForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForVision2Seq.from_pretrained(
             self.model_name,
             **kwargs
         )
@@ -120,11 +120,11 @@ Respond with JSON:
         messages = [
             {
                 "role": "system",
-                "content": self.DETECTION_PROMPT
+                "content": [{"type": "text", "text": self.DETECTION_PROMPT}]
             },
             {
                 "role": "user",
-                "content": f"Analyze this text:\n\n{text}"
+                "content": [{"type": "text", "text": f"Analyze this text:\n\n{text}"}]
             }
         ]
         
@@ -153,25 +153,46 @@ Respond with JSON:
         logger.debug(f"Perspective: {is_perspective} (conf: {confidence:.2f})")
         return is_perspective, confidence
     
-    def rephrase_for_video(self, question: str, image: str) -> str:
+    def rephrase_for_video(self, question: str, image: str, camera_params: Dict[str, Any] = None) -> str:
         """Rephrase question for video generation using Qwen3-VL"""
         self._init_model()
         
-        prompt = f"""Given this question about perspective-taking, create a simple video prompt.
+        # Use detected camera parameters or defaults
+        if camera_params and camera_params.get('confidence', 0) > 0.5:
+            elevation = camera_params.get('pitch', 20.0)
+            # Ensure elevation is reasonable for viewing
+            if abs(elevation) < 10:
+                elevation = 20.0
+            logger.info(f"Using detected camera elevation: {elevation}°")
+        else:
+            elevation = 20.0  # Default elevation
+            logger.info("Using default camera elevation: 20°")
+        
+        prompt = f"""Given this question about perspective-taking, create a camera control prompt for video generation.
 
 Question: {question}
 
-Extract who or what perspective is being asked about, then format as:
-"Please rotate the scene to the [person/object/viewpoint] perspective"
+Current camera parameters detected:
+- Elevation (pitch): {elevation:.1f}°
+- Camera should maintain this viewing angle
 
-If no specific person/object is mentioned, use "opposite perspective" or "other side".
+Generate a technical camera prompt with these parameters:
+1. Identify the target object/person for perspective shift
+2. Use the detected elevation of {elevation:.0f}°
+3. Start at azimuth 0°, end at azimuth 180° for opposite perspective
+4. Maintain smooth horizontal rotation
+
+Output EXACTLY in this format, replacing only the [object] placeholder:
+"First frame: Your camera is tilted at {elevation:.0f}° elevation, viewing from 0° azimuth.
+Final frame: Your camera remains at {elevation:.0f}° elevation, but rotates horizontally to 180° azimuth.
+Create a smooth video showing the camera's horizontal rotation around the [object], and try to maintain the tilted viewing angle throughout."
 
 Video prompt:"""
         
         messages = [
             {
                 "role": "system",
-                "content": "You are an expert at video generation prompts."
+                "content": [{"type": "text", "text": "You are an expert at technical camera control prompts for video generation. Always output precise camera angles in degrees."}]
             },
             {
                 "role": "user",
@@ -276,11 +297,11 @@ Final Answer:"""
         messages.extend([
             {
                 "role": "system",
-                "content": "You are an expert at spatial reasoning and perspective analysis."
+                "content": [{"type": "text", "text": "You are an expert at spatial reasoning and perspective analysis."}]
             },
             {
                 "role": "user",
-                "content": prompt
+                "content": [{"type": "text", "text": prompt}]
             }
         ])
         

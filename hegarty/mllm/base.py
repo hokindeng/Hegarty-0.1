@@ -1,7 +1,7 @@
 """Base interface for MLLM providers"""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 
 class MLLMProvider(ABC):
@@ -13,7 +13,7 @@ class MLLMProvider(ABC):
         pass
     
     @abstractmethod
-    def rephrase_for_video(self, question: str, image: str) -> str:
+    def rephrase_for_video(self, question: str, image: str, camera_params: Dict[str, Any] = None) -> str:
         """Rephrase question for video generation"""
         pass
     

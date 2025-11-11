@@ -117,7 +117,7 @@ def initialize_hegarty(provider: str = "qwen", session_dir: Optional[Path] = Non
         temperature=0.3, 
         max_tokens=1000, 
         sora_video_length=4, 
-        frame_extraction_count=5, 
+        frame_extraction_count=1,  # Changed from 5 to 1 - extract only last frame
         max_workers=6
     )
     
@@ -240,6 +240,14 @@ def process_image_question(image: Optional[Image.Image], question: str, provider
     if video_files:
         video_path = str(video_files[0])
         debug_info.append(f"Video found: {video_path}")
+        
+        # Check for saved Sora prompt
+        sora_prompt_file = session_dir / "sora_prompt.json"
+        if sora_prompt_file.exists():
+            with open(sora_prompt_file, 'r') as f:
+                sora_prompt_data = json.load(f)
+            debug_info.append(f"Sora prompt saved: {sora_prompt_file}")
+            debug_info.append(f"Sora prompt content: {sora_prompt_data['prompt']}")
         
         # Frames are saved by FrameExtractor in session_dir/frames
         frames_dir = session_dir / "frames"
